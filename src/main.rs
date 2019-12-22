@@ -11,8 +11,7 @@ fn filter_nongit_dirs(entry: &DirEntry) -> bool {
 }
 
 /// Find directories containing git repos
-fn find_repos(basedir: &str) -> Vec<String> {
-    let mut repos = Vec::new();
+fn find_repos(basedir: &str, out: fn(entry: &dyn std::fmt::Display)) {
     for entry in WalkDir::new(basedir)
         .follow_links(true)
         .same_file_system(true)
@@ -24,17 +23,15 @@ fn find_repos(basedir: &str) -> Vec<String> {
                 let parent_path = entry.path().parent().expect("Could not determine parent.");
                 if let Some(path) = parent_path.to_str() {
                     // if git2::Repository::open(&path).is_ok() {
-                    repos.push(path.to_string());
+                    out(&path);
                 }
             }
         }
     }
-    repos
 }
 
 /// Find files
-fn find(basedir: &str) -> Vec<String> {
-    let mut dirs = Vec::new();
+fn find(basedir: &str, out: fn(entry: &dyn std::fmt::Display)) {
     for entry in WalkDir::new(basedir)
         .follow_links(true)
         .same_file_system(true)
@@ -42,10 +39,9 @@ fn find(basedir: &str) -> Vec<String> {
         .filter_entry(|e| !is_hidden(e))
     {
         if let Ok(entry) = entry {
-            dirs.push(entry.path().display().to_string());
+            out(&entry.path().display());
         }
     }
-    dirs
 }
 
 #[derive(Debug, StructOpt)]
@@ -60,10 +56,9 @@ struct Cli {
 
 fn main() {
     let args = Cli::from_args();
-    let dirs = if args.git {
-        find_repos(&args.basedir)
+    if args.git {
+        find_repos(&args.basedir, |entry| println!("{}", entry));
     } else {
-        find(&args.basedir)
-    };
-    println!("{:?}", dirs);
+        find(&args.basedir, |entry| println!("{}", entry));
+    }
 }
