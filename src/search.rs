@@ -1,4 +1,4 @@
-use tantivy::collector::{Count, TopDocs};
+use tantivy::collector::{Count, FacetCollector, TopDocs};
 use tantivy::query::{AllQuery, QueryParser};
 use tantivy::{self, Index};
 
@@ -41,6 +41,15 @@ pub fn count(index: &Index, text: String) -> tantivy::Result<()> {
     let count = searcher.search(&query, &Count).unwrap();
 
     println!("Match count: {}", &count);
+
+    let tags = index.schema().get_field("tags").unwrap();
+    let mut facet_collector = FacetCollector::for_field(tags);
+    facet_collector.add_facet("/file_type");
+
+    let facet_counts = searcher.search(&AllQuery, &facet_collector).unwrap();
+    for (facet, count) in facet_counts.get("/file_type") {
+        println!("{}: {}", &facet, count);
+    }
 
     Ok(())
 }

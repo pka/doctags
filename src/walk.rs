@@ -9,7 +9,7 @@ fn filter_nongit_dirs(entry: &DirEntry) -> bool {
 /// Find directories containing git repos
 pub fn find_repos<F>(basedir: &str, mut out: F)
 where
-    F: FnMut(&str),
+    F: FnMut(&str, bool),
 {
     for entry in WalkDir::new(basedir)
         .follow_links(true)
@@ -22,7 +22,7 @@ where
                 let parent_path = entry.path().parent().expect("Could not determine parent.");
                 if let Some(path) = parent_path.to_str() {
                     // if git2::Repository::open(&path).is_ok() {
-                    out(&path);
+                    out(&path, true);
                 }
             }
         }
@@ -32,7 +32,7 @@ where
 /// Find files
 pub fn find<F>(basedir: &str, mut out: F)
 where
-    F: FnMut(&str),
+    F: FnMut(&str, bool),
 {
     for entry in WalkDir::new(basedir)
         .follow_links(true)
@@ -42,7 +42,7 @@ where
     {
         if let Ok(entry) = entry {
             if let Some(path) = entry.path().to_str() {
-                out(&path);
+                out(&path, entry.file_type().is_dir());
             }
         }
     }

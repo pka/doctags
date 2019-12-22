@@ -1,3 +1,5 @@
+use std::fs;
+use std::path::Path;
 use tantivy::schema::*;
 use tantivy::{self, Index};
 
@@ -8,6 +10,15 @@ pub struct IndexWriter {
 }
 
 pub fn create(index_path: &String) -> tantivy::Result<IndexWriter> {
+    if Path::new(index_path).exists() {
+        if Path::new(index_path).join(".managed.json").exists() {
+            fs::remove_dir_all(index_path).unwrap();
+        } else {
+            return Err(tantivy::Error::IndexAlreadyExists);
+        }
+    }
+    std::fs::create_dir_all(index_path).unwrap();
+
     let mut schema_builder = Schema::builder();
 
     schema_builder.add_text_field("path", TEXT | STORED);
@@ -30,10 +41,15 @@ pub fn open(index_path: String) -> tantivy::Result<Index> {
 }
 
 impl IndexWriter {
-    pub fn add(&mut self, entry: &str) -> tantivy::Result<()> {
+    pub fn add(&mut self, path: &str, is_dir: bool) -> tantivy::Result<()> {
         let mut doc = Document::new();
-        doc.add_text(self.path, entry);
-        doc.add_facet(self.tags, Facet::from("/dummy"));
+        doc.add_text(self.path, path);
+        let facet = if is_dir {
+            "/file_type/dir"
+        } else {
+            "/file_type/file"
+        };
+        doc.add_facet(self.tags, Facet::from(facet));
         self.writer.add_document(doc);
 
         Ok(())

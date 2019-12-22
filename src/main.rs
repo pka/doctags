@@ -6,8 +6,8 @@ mod walk;
 
 use structopt::StructOpt;
 
-fn out_json(entry: &str) {
-    println!(r#"{{"path":"{}"}}"#, entry);
+fn out_json(path: &str, _is_dir: bool) {
+    println!(r#"{{"path":"{}"}}"#, path);
 }
 
 #[derive(Debug, StructOpt)]
@@ -51,7 +51,9 @@ fn main() {
         }
         Cli::Index { index, basedir } => {
             let mut index_writer = index::create(&index).unwrap();
-            walk::find(&basedir, |entry| index_writer.add(entry).unwrap());
+            walk::find(&basedir, |path, is_dir| {
+                index_writer.add(path, is_dir).unwrap()
+            });
             let _ = index_writer.commit();
         }
         Cli::Search { index, text } => {
