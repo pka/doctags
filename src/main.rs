@@ -32,6 +32,12 @@ enum Cli {
         /// Search text
         text: String,
     },
+    Count {
+        /// index directory
+        index: String,
+        /// Search text
+        text: String,
+    },
 }
 
 fn main() {
@@ -51,6 +57,10 @@ fn main() {
         Cli::Search { index, text } => {
             let index = index::open(index).unwrap();
             search::search(&index, text).unwrap();
+        }
+        Cli::Count { index, text } => {
+            let index = index::open(index).unwrap();
+            search::count(&index, text).unwrap();
         }
     }
 }
