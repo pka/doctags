@@ -1,7 +1,39 @@
 use std::collections::HashMap;
 use tantivy::collector::{Count, FacetCollector, MultiCollector, TopDocs};
-use tantivy::query::{AllQuery, QueryParser};
-use tantivy::{self, Index};
+use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery};
+use tantivy::schema::{Facet, IndexRecordOption};
+use tantivy::{self, Index, Term};
+
+/// Create query with [Tantivy Query parser](https://docs.rs/tantivy/0.11.3/tantivy/query/struct.QueryParser.html)
+///
+/// Search term example: `path:csv OR path:pdf`
+pub fn raw_query(index: &Index, text: &str) -> Box<dyn Query> {
+    let path_field = index.schema().get_field("path").unwrap();
+    let query_parser = QueryParser::for_index(&index, vec![path_field]);
+
+    query_parser.parse_query(text).unwrap()
+}
+
+/// Create simple doctags query
+///
+/// Search term example: `:file_type:file html png`
+pub fn doctags_query(index: &Index, text: &String) -> Box<dyn Query> {
+    if text.starts_with(":") {
+        let v: Vec<&str> = text.splitn(2, ' ').collect();
+        let path_query = raw_query(index, v[1]);
+        let facet = v[0].replace(":", "/");
+        let tags_field = index.schema().get_field("tags").unwrap();
+        let tag_query: Box<dyn Query> = Box::new(TermQuery::new(
+            Term::from_facet(tags_field, &Facet::from(&facet)),
+            IndexRecordOption::Basic,
+        ));
+        let faceted_query =
+            BooleanQuery::from(vec![(Occur::Must, path_query), (Occur::Must, tag_query)]);
+        Box::new(faceted_query)
+    } else {
+        raw_query(index, text)
+    }
+}
 
 pub fn search(index: &Index, text: String) -> tantivy::Result<()> {
     let reader = index.reader()?;
@@ -9,12 +41,8 @@ pub fn search(index: &Index, text: String) -> tantivy::Result<()> {
     let searcher = reader.searcher();
 
     let schema = index.schema();
-    let path_field = schema.get_field("path").unwrap();
-    let tags_field = schema.get_field("tags").unwrap();
 
-    let query_parser = QueryParser::for_index(&index, vec![path_field]);
-
-    let query = query_parser.parse_query(&text)?;
+    let query = doctags_query(&index, &text);
 
     let limit = 10;
     let exclude_count = false;
@@ -35,6 +63,7 @@ pub fn search(index: &Index, text: String) -> tantivy::Result<()> {
     let facet_handle = if facet_prefixes.is_empty() {
         None
     } else {
+        let tags_field = schema.get_field("tags").unwrap();
         let mut facet_collector = FacetCollector::for_field(tags_field);
         for facet_prefix in &facet_prefixes {
             facet_collector.add_facet(facet_prefix);
@@ -81,14 +110,10 @@ pub fn count(index: &Index, text: String) -> tantivy::Result<()> {
 
     let searcher = reader.searcher();
 
-    let path = index.schema().get_field("path").unwrap();
-
     let query = if text.is_empty() {
         Box::new(AllQuery)
     } else {
-        let query_parser = QueryParser::for_index(&index, vec![path]);
-
-        query_parser.parse_query(&text)?
+        raw_query(&index, &text)
     };
 
     let count = searcher.search(&query, &Count).unwrap();
