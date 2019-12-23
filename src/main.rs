@@ -1,6 +1,5 @@
 mod index;
 #[allow(dead_code)]
-mod path_util;
 mod search;
 mod walk;
 
@@ -44,7 +43,7 @@ fn main() {
     match Cli::from_args() {
         Cli::Scan { git, basedir } => {
             if git {
-                walk::find_repos(&basedir, out_json);
+                // walk::find_repos(&basedir, out_json);
             } else {
                 walk::find(&basedir, out_json);
             }
