@@ -47,7 +47,7 @@ pub fn search(index: &Index, text: String) -> tantivy::Result<()> {
     let limit = 10;
     let exclude_count = false;
     let exclude_docs = false;
-    let facet_prefixes = vec!["/file_type"];
+    let facet_prefixes = vec!["/level"];
 
     let mut multi_collector = MultiCollector::new();
     let count_handle = if exclude_count {
@@ -122,10 +122,10 @@ pub fn count(index: &Index, text: String) -> tantivy::Result<()> {
 
     let tags = index.schema().get_field("tags").unwrap();
     let mut facet_collector = FacetCollector::for_field(tags);
-    facet_collector.add_facet("/file_type");
+    facet_collector.add_facet("/level");
 
     let facet_counts = searcher.search(&AllQuery, &facet_collector).unwrap();
-    for (facet, count) in facet_counts.get("/file_type") {
+    for (facet, count) in facet_counts.get("/level") {
         println!("{}: {}", &facet, count);
     }
 

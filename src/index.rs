@@ -41,15 +41,12 @@ pub fn open(index_path: String) -> tantivy::Result<Index> {
 }
 
 impl IndexWriter {
-    pub fn add(&mut self, path: &str, is_dir: bool) -> tantivy::Result<()> {
+    pub fn add(&mut self, path: &str, tags: &Vec<String>) -> tantivy::Result<()> {
         let mut doc = Document::new();
         doc.add_text(self.path, path);
-        let facet = if is_dir {
-            "/file_type/dir"
-        } else {
-            "/file_type/file"
-        };
-        doc.add_facet(self.tags, Facet::from(facet));
+        for tag in tags {
+            doc.add_facet(self.tags, Facet::from(tag.as_str()));
+        }
         self.writer.add_document(doc);
 
         Ok(())
