@@ -1,5 +1,7 @@
 use ignore::WalkBuilder;
+use std::fs;
 use std::path::Path;
+use toml::{self, Value};
 
 // Returns `true` if this entry should be included in scans.
 // fn filter_nongit_dirs(entry: &DirEntry) -> bool {
@@ -40,6 +42,39 @@ struct DocTags {
     // filetags: HashMap<String, Vec<String>>,
 }
 
+fn facet(tag: &str) -> String {
+    format!("/{}", tag.replace(":", "/"))
+}
+
+impl DocTags {
+    fn from_toml(toml: String) -> Result<DocTags, toml::de::Error> {
+        let config: Value = toml::from_str(&toml)?;
+        let dirtags = if let Some(tags) = config.get("tags") {
+            tags.as_array()
+                .expect("tags must be array type")
+                .iter()
+                .map(|tag| facet(tag.as_str().expect("tag must be string")))
+                .collect()
+        } else {
+            vec![]
+        };
+        let doctags = DocTags { dirtags };
+        Ok(doctags)
+    }
+}
+
+fn read_doctags_file(dir: &Path) -> DocTags {
+    let path = dir.join(".doctags.toml");
+    if path.exists() {
+        if let Ok(toml) = fs::read_to_string(path) {
+            if let Ok(doctags) = DocTags::from_toml(toml) {
+                return doctags;
+            }
+        }
+    }
+    DocTags { dirtags: vec![] }
+}
+
 type DocTagsStack = Vec<DocTags>;
 
 fn all_dirtags(stack: &DocTagsStack) -> Vec<String> {
@@ -71,9 +106,7 @@ where
                 dirtags = all_dirtags(&doctags_stack);
             }
             if entry.file_type().unwrap().is_dir() {
-                doctags_stack.push(DocTags {
-                    dirtags: vec![format!("/level/{}", depth)],
-                });
+                doctags_stack.push(read_doctags_file(entry.path()));
                 dirtags = all_dirtags(&doctags_stack);
             }
             if let Some(path) = entry.path().to_str() {

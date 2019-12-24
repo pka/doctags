@@ -1,0 +1,9 @@
+# tags for this directory and all contained files
+# (including files in subdirectories)
+tags = ["lang:rust", "author:pka"]
+
+# optional section for individual file tags
+# (no files in subdirectories allowed)
+[files]
+".doctags.toml" = ["format:toml"]
+"src" = ["content:sourcecode"]
