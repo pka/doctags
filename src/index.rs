@@ -41,7 +41,7 @@ pub fn open(index_path: String) -> tantivy::Result<Index> {
 }
 
 impl IndexWriter {
-    pub fn add(&mut self, path: &str, tags: &Vec<String>) -> tantivy::Result<()> {
+    pub fn add(&mut self, path: &str, tags: &Vec<&String>) -> tantivy::Result<()> {
         let mut doc = Document::new();
         doc.add_text(self.path, path);
         for tag in tags {

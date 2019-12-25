@@ -5,7 +5,7 @@ mod walk;
 
 use structopt::StructOpt;
 
-fn out_json(path: &str, tags: &Vec<String>) {
+fn out_json(path: &str, tags: &Vec<&String>) {
     println!(r#"{{"path":"{}","tags":{:?}}}"#, path, tags);
 }
 

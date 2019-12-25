@@ -1,4 +1,5 @@
 use ignore::WalkBuilder;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use toml::{self, Value};
@@ -39,7 +40,7 @@ const SAME_FS_SUPPORTED: bool = false;
 
 struct DocTags {
     dirtags: Vec<String>,
-    // filetags: HashMap<String, Vec<String>>,
+    filetags: HashMap<String, Vec<String>>,
 }
 
 fn facet(tag: &str) -> String {
@@ -47,44 +48,87 @@ fn facet(tag: &str) -> String {
 }
 
 impl DocTags {
-    fn from_toml(toml: String) -> Result<DocTags, toml::de::Error> {
+    fn from_toml(dir: &Path, toml: String) -> Result<DocTags, toml::de::Error> {
         let config: Value = toml::from_str(&toml)?;
         let dirtags = if let Some(tags) = config.get("tags") {
-            tags.as_array()
-                .expect("tags must be array type")
-                .iter()
-                .map(|tag| facet(tag.as_str().expect("tag must be string")))
-                .collect()
+            tag_value_to_vec(tags)
         } else {
             vec![]
         };
-        let doctags = DocTags { dirtags };
+        let mut filetags = HashMap::new();
+        if let Some(filetable) = config.get("files") {
+            filetable
+                .as_table()
+                .expect("tags must be table type")
+                .iter()
+                .for_each(|(fname, tags)| {
+                    filetags.insert(
+                        dir.join(fname).to_string_lossy().to_string(),
+                        tag_value_to_vec(tags),
+                    );
+                });
+        }
+        let doctags = DocTags { dirtags, filetags };
         Ok(doctags)
     }
+}
+
+fn tag_value_to_vec(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .expect("tags must be array type")
+        .iter()
+        .map(|tag| facet(tag.as_str().expect("tag must be string")))
+        .collect()
 }
 
 fn read_doctags_file(dir: &Path) -> DocTags {
     let path = dir.join(".doctags.toml");
     if path.exists() {
         if let Ok(toml) = fs::read_to_string(path) {
-            if let Ok(doctags) = DocTags::from_toml(toml) {
+            if let Ok(doctags) = DocTags::from_toml(dir, toml) {
                 return doctags;
             }
         }
     }
-    DocTags { dirtags: vec![] }
+    DocTags {
+        dirtags: vec![],
+        filetags: HashMap::new(),
+    }
 }
 
 type DocTagsStack = Vec<DocTags>;
 
-fn all_dirtags(stack: &DocTagsStack) -> Vec<String> {
-    stack.iter().flat_map(|dt| dt.dirtags.clone()).collect()
+fn all_tags<'a>(
+    stack: &'a DocTagsStack,
+    path: String,
+    is_subdir: bool,
+    no_tags: &'a Vec<String>,
+) -> Vec<&'a String> {
+    stack
+        .iter()
+        // collect dirtags
+        .flat_map(|dt| &dt.dirtags)
+        // append filtetags if path has matching entry
+        .chain({
+            let filetags_entry = if is_subdir {
+                &stack[stack.len() - 2] // config from parent dir
+            } else {
+                &stack[stack.len() - 1]
+            };
+            if let Some(filetags) = filetags_entry.filetags.get(&path) {
+                filetags.iter()
+            } else {
+                no_tags.iter()
+            }
+        })
+        .collect()
 }
 
 /// Find files
 pub fn find<F>(basedir: &str, mut out: F)
 where
-    F: FnMut(&str, &Vec<String>),
+    F: FnMut(&str, &Vec<&String>),
 {
     let path = Path::new(basedir).canonicalize().unwrap();
     let walker = WalkBuilder::new(path)
@@ -93,7 +137,6 @@ where
         .build();
     let mut depth = 0;
     // flattened tags for current depth
-    let mut dirtags = vec![];
     let mut doctags_stack = vec![];
     doctags_stack.reserve(10);
     for entry in walker {
@@ -103,14 +146,19 @@ where
             } else if entry.depth() < depth {
                 depth = entry.depth();
                 doctags_stack.truncate(depth);
-                dirtags = all_dirtags(&doctags_stack);
             }
             if entry.file_type().unwrap().is_dir() {
                 doctags_stack.push(read_doctags_file(entry.path()));
-                dirtags = all_dirtags(&doctags_stack);
             }
             if let Some(path) = entry.path().to_str() {
-                out(&path, &dirtags);
+                let no_tags: Vec<String> = vec![];
+                let tags = all_tags(
+                    &doctags_stack,
+                    path.to_string(),
+                    entry.file_type().unwrap().is_dir() && depth > 0,
+                    &no_tags,
+                );
+                out(&path, &tags);
             }
         }
     }
