@@ -5,5 +5,5 @@ tags = ["lang:rust", "author:pka"]
 # optional section for individual file tags
 # (no files in subdirectories allowed)
 [files]
-".doctags.toml" = ["format:toml"]
+"." = ["gitrepo"]
 "src" = ["content:sourcecode"]

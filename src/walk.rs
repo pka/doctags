@@ -63,7 +63,11 @@ impl DocTags {
                 .iter()
                 .for_each(|(fname, tags)| {
                     filetags.insert(
-                        dir.join(fname).to_string_lossy().to_string(),
+                        dir.join(fname)
+                            .canonicalize()
+                            .unwrap()
+                            .to_string_lossy()
+                            .to_string(),
                         tag_value_to_vec(tags),
                     );
                 });
