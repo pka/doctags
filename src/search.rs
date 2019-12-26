@@ -35,7 +35,7 @@ pub fn doctags_query(index: &Index, text: &String) -> Box<dyn Query> {
     }
 }
 
-pub fn search(index: &Index, text: String) -> tantivy::Result<()> {
+pub fn search(index: &Index, text: String, limit: usize) -> tantivy::Result<()> {
     let reader = index.reader()?;
 
     let searcher = reader.searcher();
@@ -45,7 +45,7 @@ pub fn search(index: &Index, text: String) -> tantivy::Result<()> {
 
     let query = doctags_query(&index, &text);
 
-    let limit = 10;
+    let limit = if limit == 0 { 100_000 } else { limit };
     let exclude_count = false;
     let exclude_docs = false;
     let facet_prefixes: Vec<&str> = vec![];

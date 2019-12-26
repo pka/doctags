@@ -23,19 +23,22 @@ enum Cli {
         basedir: String,
     },
     Index {
-        /// index directory
+        /// Index directory
         index: String,
         /// Base directory for searching files to index
         basedir: String,
     },
     Search {
-        /// index directory
+        /// Limit count of returned results. Use 0 for unlimited results.
+        #[structopt(short, long, default_value = "10")]
+        limit: usize,
+        /// Index directory
         index: String,
         /// Search text
         text: String,
     },
     Count {
-        /// index directory
+        /// Index directory
         index: String,
         /// Search text
         text: String,
@@ -57,9 +60,9 @@ fn main() {
             walk::find(&basedir, |path, tags| index_writer.add(path, tags).unwrap());
             let _ = index_writer.commit();
         }
-        Cli::Search { index, text } => {
+        Cli::Search { index, text, limit } => {
             let index = index::open(index).unwrap();
-            search::search(&index, text).unwrap();
+            search::search(&index, text, limit).unwrap();
         }
         Cli::Count { index, text } => {
             let index = index::open(index).unwrap();
