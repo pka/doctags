@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 mod index;
 #[allow(dead_code)]
 mod search;
@@ -40,6 +43,7 @@ enum Cli {
 }
 
 fn main() {
+    env_logger::init();
     match Cli::from_args() {
         Cli::Scan { git, basedir } => {
             if git {

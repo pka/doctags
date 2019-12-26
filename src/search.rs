@@ -41,6 +41,7 @@ pub fn search(index: &Index, text: String) -> tantivy::Result<()> {
     let searcher = reader.searcher();
 
     let schema = index.schema();
+    let path_field = index.schema().get_field("path").unwrap();
 
     let query = doctags_query(&index, &text);
 
@@ -77,7 +78,7 @@ pub fn search(index: &Index, text: String) -> tantivy::Result<()> {
     // count
     if let Some(ch) = count_handle {
         let count = ch.extract(&mut multi_fruit) as i64;
-        println!("Match count: {}", count);
+        debug!("Match count: {}", count);
     }
 
     // facet
@@ -86,7 +87,7 @@ pub fn search(index: &Index, text: String) -> tantivy::Result<()> {
         let mut facet_kv: HashMap<String, u64> = HashMap::new();
         for facet_prefix in &facet_prefixes {
             for (facet_key, facet_value) in facet_counts.get(facet_prefix) {
-                println!("{}: {}", facet_key.to_string(), facet_value);
+                debug!("{}: {}", facet_key.to_string(), facet_value);
                 facet_kv.insert(facet_key.to_string(), facet_value);
             }
         }
@@ -98,7 +99,8 @@ pub fn search(index: &Index, text: String) -> tantivy::Result<()> {
         for (score, doc_address) in top_docs {
             let doc = searcher.doc(doc_address).unwrap();
             // let named_doc = schema.to_named_doc(&doc);
-            println!("score: {} doc: {}", score, schema.to_json(&doc));
+            debug!("score: {} doc: {}", score, schema.to_json(&doc));
+            println!("{}", doc.get_first(path_field).unwrap().text().unwrap());
         }
     }
 
