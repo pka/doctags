@@ -6,4 +6,4 @@ tags = ["lang:rust", "author:pka"]
 # (no files in subdirectories allowed)
 [files]
 "." = ["gitrepo"]
-"src" = ["content:sourcecode"]
+"Cargo.toml" = ["format:toml"]

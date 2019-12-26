@@ -106,7 +106,7 @@ type DocTagsStack = Vec<DocTags>;
 fn all_tags<'a>(
     stack: &'a DocTagsStack,
     path: String,
-    is_subdir: bool,
+    _is_subdir: bool,
     no_tags: &'a Vec<String>,
 ) -> Vec<&'a String> {
     stack
@@ -115,11 +115,13 @@ fn all_tags<'a>(
         .flat_map(|dt| &dt.dirtags)
         // append filtetags if path has matching entry
         .chain({
-            let filetags_entry = if is_subdir {
-                &stack[stack.len() - 2] // config from parent dir
-            } else {
-                &stack[stack.len() - 1]
-            };
+            // filetags for directories in parent dir not supported for now
+            // let filetags_entry = if is_subdir {
+            //     &stack[stack.len() - 2] // config from parent dir
+            // } else {
+            //     &stack[stack.len() - 1]
+            // };
+            let filetags_entry = &stack[stack.len() - 1];
             if let Some(filetags) = filetags_entry.filetags.get(&path) {
                 filetags.iter()
             } else {
