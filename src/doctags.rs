@@ -140,3 +140,48 @@ pub fn add_tag(path: String, tag: String, recursive: bool) {
     let toml = toml::to_string(&doctags).unwrap();
     fs::write(toml_path, toml).expect("Couldn't write config file");
 }
+
+#[test]
+fn collect_tags() {
+    use std::env;
+
+    let toml = r#"
+        tags = ["lang:rust", "author:pka"]
+
+        [files]
+        "." = ["gitrepo"]
+        "Cargo.toml" = ["format:toml"]
+    "#;
+    let cwd = env::current_dir().unwrap();
+    let docttags = DocTags::from_toml(&cwd, toml.to_string(), true).unwrap();
+    let doctags_stack = vec![docttags];
+    let no_tags: Vec<String> = vec![];
+
+    let path = cwd.to_string_lossy().to_string();
+    assert_eq!(
+        all_tags(&doctags_stack, path, false, &no_tags),
+        vec!["/lang/rust", "/author/pka", "/gitrepo"]
+    );
+
+    let path = cwd.join("Cargo.toml").to_string_lossy().to_string();
+    assert_eq!(
+        all_tags(&doctags_stack, path, false, &no_tags),
+        vec!["/lang/rust", "/author/pka", "/format/toml"]
+    );
+
+    let path = cwd.join("Cargo.lock").to_string_lossy().to_string();
+    assert_eq!(
+        all_tags(&doctags_stack, path, false, &no_tags),
+        vec!["/lang/rust", "/author/pka"]
+    );
+
+    // without facet conversion
+    let docttags = DocTags::from_toml(&cwd, toml.to_string(), false).unwrap();
+    let doctags_stack = vec![docttags];
+
+    let path = cwd.to_string_lossy().to_string();
+    assert_eq!(
+        all_tags(&doctags_stack, path, false, &no_tags),
+        vec!["lang:rust", "author:pka", "gitrepo"]
+    );
+}
