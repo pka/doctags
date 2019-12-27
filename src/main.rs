@@ -2,6 +2,7 @@
 extern crate log;
 
 mod config;
+mod doctags;
 mod index;
 mod search;
 mod walk;
