@@ -35,6 +35,16 @@ enum Cli {
         /// Base directory for searching files to index
         basedir: String,
     },
+    /// Add tag to file
+    Tag {
+        /// Tag also subdirs
+        #[structopt(short, long, parse(try_from_str), default_value = "true")]
+        recursive: bool,
+        /// File or directory
+        path: String,
+        /// Tag
+        tag: String,
+    },
     /// Search in index
     Search {
         /// Limit count of returned results. Use 0 for unlimited results.
@@ -103,6 +113,13 @@ fn main() {
                 index_writer.add(path, tags).unwrap()
             });
             let _ = index_writer.commit();
+        }
+        Cli::Tag {
+            path,
+            tag,
+            recursive,
+        } => {
+            doctags::add_tag(path, tag, recursive);
         }
         Cli::Search {
             docset,

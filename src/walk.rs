@@ -59,7 +59,7 @@ where
                 doctags_stack.truncate(depth);
             }
             if entry.file_type().unwrap().is_dir() {
-                doctags_stack.push(read_doctags_file(entry.path()));
+                doctags_stack.push(read_doctags_file(entry.path(), true));
             }
             if let Some(path) = entry.path().to_str() {
                 let no_tags: Vec<String> = vec![];
