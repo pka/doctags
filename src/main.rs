@@ -35,6 +35,12 @@ enum Cli {
         /// Base directory for searching files to index
         basedir: String,
     },
+    /// Recreate search index
+    Reindex {
+        /// Docset name
+        #[structopt(short = "n", long, name = "name", default_value = "default")]
+        docset: String,
+    },
     /// Add tag to file
     Tag {
         /// Tag also subdirs
@@ -108,11 +114,14 @@ fn main() {
                 cfg = config.docsets.last();
             }
             let cfg = cfg.unwrap();
-            let mut index_writer = index::create(&cfg.index).unwrap();
-            walk::find(&cfg.basedir, |path, tags| {
-                index_writer.add(path, tags).unwrap()
-            });
-            let _ = index_writer.commit();
+            index::create_and_write(&cfg.basedir, &cfg.index);
+        }
+        Cli::Reindex { docset } => {
+            let config = config::load_config();
+            let cfg = config
+                .docset_config(&docset)
+                .expect("Docset config missing");
+            index::create_and_write(&cfg.basedir, &cfg.index);
         }
         Cli::Tag {
             path,
@@ -129,7 +138,7 @@ fn main() {
             let config = config::load_config();
             let cfg = config
                 .docset_config(&docset)
-                .expect("docset config missing");
+                .expect("Docset config missing");
             let index = index::open(&cfg.index).unwrap();
             search::search(&index, text, limit).unwrap();
         }

@@ -1,3 +1,4 @@
+use crate::walk;
 use std::fs;
 use std::path::Path;
 use tantivy::schema::*;
@@ -7,6 +8,12 @@ pub struct IndexWriter {
     writer: tantivy::IndexWriter,
     path: Field,
     tags: Field,
+}
+
+pub fn create_and_write(basedir: &str, index_path: &String) {
+    let mut index_writer = create(index_path).unwrap();
+    walk::find(&basedir, |path, tags| index_writer.add(path, tags).unwrap());
+    let _ = index_writer.commit();
 }
 
 pub fn create(index_path: &String) -> tantivy::Result<IndexWriter> {
