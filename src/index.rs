@@ -12,10 +12,13 @@ pub struct IndexWriter {
 pub fn create(index_path: &String) -> tantivy::Result<IndexWriter> {
     if Path::new(index_path).exists() {
         if Path::new(index_path).join(".managed.json").exists() {
+            debug!("Recreating index at {}", index_path);
             fs::remove_dir_all(index_path).unwrap();
         } else {
             return Err(tantivy::Error::IndexAlreadyExists);
         }
+    } else {
+        info!("Creating index at {}", index_path);
     }
     std::fs::create_dir_all(index_path).unwrap();
 
@@ -36,8 +39,8 @@ pub fn create(index_path: &String) -> tantivy::Result<IndexWriter> {
     Ok(IndexWriter { writer, path, tags })
 }
 
-pub fn open(index_path: String) -> tantivy::Result<Index> {
-    Index::open_in_dir(&index_path)
+pub fn open(index_path: &String) -> tantivy::Result<Index> {
+    Index::open_in_dir(index_path)
 }
 
 impl IndexWriter {
