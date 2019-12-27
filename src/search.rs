@@ -1,3 +1,4 @@
+use regex::{Captures, Regex};
 use std::collections::HashMap;
 use tantivy::collector::{Count, FacetCollector, MultiCollector, TopDocs};
 use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery};
@@ -14,24 +15,36 @@ pub fn raw_query(index: &Index, text: &str) -> Box<dyn Query> {
     query_parser.parse_query(text).unwrap()
 }
 
-/// Create simple doctags query
+lazy_static! {
+    static ref TAG_REGEX: Regex = Regex::new(r"(:[A-Za-z0-9_\-.]+)+").unwrap();
+}
+
+/// Create basic doctags query
 ///
 /// Search term example: `:file_type:file html png`
 pub fn doctags_query(index: &Index, text: &String) -> Box<dyn Query> {
-    if text.starts_with(":") {
-        let v: Vec<&str> = text.splitn(2, ' ').collect();
-        let path_query = raw_query(index, v[1]);
-        let facet = v[0].replace(":", "/");
-        let tags_field = index.schema().get_field("tags").unwrap();
-        let tag_query: Box<dyn Query> = Box::new(TermQuery::new(
+    let mut tag_query = Vec::new();
+    let tags_field = index.schema().get_field("tags").unwrap();
+    let raw = TAG_REGEX.replace_all(text, |caps: &Captures| {
+        let facet = caps[0].replace(":", "/");
+        let query: Box<dyn Query> = Box::new(TermQuery::new(
             Term::from_facet(tags_field, &Facet::from(&facet)),
             IndexRecordOption::Basic,
         ));
-        let faceted_query =
-            BooleanQuery::from(vec![(Occur::Must, path_query), (Occur::Must, tag_query)]);
-        Box::new(faceted_query)
+        tag_query.push(query);
+        // Remove from raw query string
+        ""
+    });
+    let path_query = raw_query(index, &raw);
+    if tag_query.is_empty() {
+        path_query
     } else {
-        raw_query(index, text)
+        let query_vec: Vec<(Occur, Box<dyn Query>)> = vec![path_query]
+            .iter()
+            .chain(tag_query.iter())
+            .map(|q| (Occur::Must, q.box_clone()))
+            .collect();
+        Box::new(BooleanQuery::from(query_vec))
     }
 }
 
