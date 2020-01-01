@@ -88,29 +88,21 @@ pub fn read_doctags_file(dir: &Path, as_facets: bool) -> DocTags {
 
 type DocTagsStack = Vec<DocTags>;
 
-pub fn all_tags<'a>(
-    stack: &'a DocTagsStack,
-    path: String,
-    _is_subdir: bool,
-    no_tags: &'a Vec<String>,
-) -> Vec<&'a String> {
+pub fn all_tags<'a>(stack: &'a DocTagsStack, path: String) -> Vec<&'a String> {
+    lazy_static! {
+        static ref NO_TAGS: Vec<String> = vec![];
+    }
     stack
         .iter()
         // collect dirtags
         .flat_map(|dt| &dt.dirtags)
         // append filtetags if path has matching entry
         .chain({
-            // filetags for directories in parent dir not supported for now
-            // let filetags_entry = if is_subdir {
-            //     &stack[stack.len() - 2] // config from parent dir
-            // } else {
-            //     &stack[stack.len() - 1]
-            // };
             let filetags_entry = &stack[stack.len() - 1];
             if let Some(filetags) = filetags_entry.filetags.get(&path) {
                 filetags.iter()
             } else {
-                no_tags.iter()
+                NO_TAGS.iter()
             }
         })
         .collect()
@@ -155,23 +147,22 @@ fn collect_tags() {
     let cwd = env::current_dir().unwrap();
     let docttags = DocTags::from_toml(&cwd, toml.to_string(), true).unwrap();
     let doctags_stack = vec![docttags];
-    let no_tags: Vec<String> = vec![];
 
     let path = cwd.to_string_lossy().to_string();
     assert_eq!(
-        all_tags(&doctags_stack, path, false, &no_tags),
+        all_tags(&doctags_stack, path),
         vec!["/lang/rust", "/author/pka", "/gitrepo"]
     );
 
     let path = cwd.join("Cargo.toml").to_string_lossy().to_string();
     assert_eq!(
-        all_tags(&doctags_stack, path, false, &no_tags),
+        all_tags(&doctags_stack, path),
         vec!["/lang/rust", "/author/pka", "/format/toml"]
     );
 
     let path = cwd.join("Cargo.lock").to_string_lossy().to_string();
     assert_eq!(
-        all_tags(&doctags_stack, path, false, &no_tags),
+        all_tags(&doctags_stack, path),
         vec!["/lang/rust", "/author/pka"]
     );
 
@@ -181,7 +172,7 @@ fn collect_tags() {
 
     let path = cwd.to_string_lossy().to_string();
     assert_eq!(
-        all_tags(&doctags_stack, path, false, &no_tags),
+        all_tags(&doctags_stack, path),
         vec!["lang:rust", "author:pka", "gitrepo"]
     );
 }

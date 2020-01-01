@@ -47,7 +47,6 @@ where
         .same_file_system(SAME_FS_SUPPORTED)
         .build();
     let mut depth = 0;
-    // flattened tags for current depth
     let mut doctags_stack = vec![];
     doctags_stack.reserve(10);
     for entry in walker {
@@ -62,13 +61,7 @@ where
                 doctags_stack.push(read_doctags_file(entry.path(), true));
             }
             if let Some(path) = entry.path().to_str() {
-                let no_tags: Vec<String> = vec![];
-                let tags = all_tags(
-                    &doctags_stack,
-                    path.to_string(),
-                    entry.file_type().unwrap().is_dir() && depth > 0,
-                    &no_tags,
-                );
+                let tags = all_tags(&doctags_stack, path.to_string());
                 out(&path, &tags);
             }
         }
