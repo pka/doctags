@@ -1,0 +1,11 @@
+[package]
+name = "doctagsfs"
+version = "0.1.0"
+authors = ["Pirmin Kalberer <pka@sourcepole.ch>"]
+edition = "2018"
+
+[dependencies]
+fuse = "0.3"
+libc = "0.2"
+env_logger = "0.7"
+time = "0.1"

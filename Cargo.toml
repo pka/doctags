@@ -4,6 +4,11 @@ version = "0.1.0"
 authors = ["Pirmin Kalberer <pka@sourcepole.ch>"]
 edition = "2018"
 
+[workspace]
+members = [
+  "doctagsfs",
+]
+
 [dependencies]
 structopt = { version = "0.3", default-features = false }
 tantivy = "0.11"
