@@ -1,6 +1,6 @@
 use crate::doctags::{all_tags, read_doctags_file};
 use ignore::WalkBuilder;
-use indicatif::{HumanDuration, ProgressBar, ProgressStyle};
+use indicatif::{FormattedDuration, ProgressBar, ProgressStyle};
 use std::path::Path;
 use std::time::Instant;
 
@@ -31,17 +31,6 @@ use std::time::Instant;
 //         }
 //     }
 // }
-
-fn bar() -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-    pb.enable_steady_tick(120);
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .tick_strings(&["⠏", "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇"])
-            .template("{spinner:.blue} {pos} {msg}"),
-    );
-    return pb;
-}
 
 #[cfg(any(unix, windows))]
 const SAME_FS_SUPPORTED: bool = true;
@@ -84,8 +73,19 @@ where
         }
     }
     pb.set_message(&format!(
-        "files indexed in {}.",
-        HumanDuration(started.elapsed())
+        "files indexed [{}].",
+        FormattedDuration(started.elapsed())
     ));
     pb.finish_at_current_pos();
+}
+
+fn bar() -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.enable_steady_tick(120);
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .tick_strings(&["⠏", "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇"])
+            .template("{spinner:.blue} {pos} {wide_msg}"),
+    );
+    return pb;
 }
