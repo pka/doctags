@@ -46,6 +46,17 @@ impl Config {
     pub fn docset_config(&self, name: &String) -> Option<&DocsetConfig> {
         self.docsets.iter().find(|cfg| cfg.name == *name)
     }
+    pub fn update_docset_config(&mut self, config: DocsetConfig) -> Option<&DocsetConfig> {
+        if let Some(idx) = self.docsets.iter().position(|cfg| cfg.name == *config.name) {
+            self.docsets[idx] = config;
+            self.save();
+            self.docsets.get(idx)
+        } else {
+            self.docsets.push(config);
+            self.save();
+            self.docsets.last()
+        }
+    }
     pub fn save(&self) {
         let toml = toml::to_string(&self).unwrap();
         fs::write(config_fn(), toml).expect("Couldn't write config file");

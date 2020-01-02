@@ -106,16 +106,9 @@ fn main() {
             basedir,
         } => {
             let mut config = config::load_config();
-            let mut cfg = config.docset_config(&docset);
-            if cfg.is_none() {
-                config
-                    .docsets
-                    .push(config::docset_config(docset, index, basedir));
-                info!("Writing configuration to {:?}", config::config_fn());
-                config.save();
-                cfg = config.docsets.last();
-            }
-            let cfg = cfg.unwrap();
+            let newcfg = config::docset_config(docset, index, basedir);
+            info!("Writing configuration to {:?}", config::config_fn());
+            let cfg = config.update_docset_config(newcfg).unwrap();
             index::create_and_write(&cfg.basedir, &cfg.index);
         }
         Cli::Reindex { docset } => {
@@ -145,6 +138,7 @@ fn main() {
             search::search(&index, text, limit).unwrap();
         }
         Cli::Stats {} => {
+            println!("Configuration {:?}", config::config_fn());
             let config = config::load_config();
             for cfg in config.docsets {
                 println!("Docset '{}':", cfg.name);
