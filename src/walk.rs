@@ -1,6 +1,8 @@
 use crate::doctags::{all_tags, read_doctags_file};
 use ignore::WalkBuilder;
+use indicatif::{HumanDuration, ProgressBar, ProgressStyle};
 use std::path::Path;
+use std::time::Instant;
 
 // Returns `true` if this entry should be included in scans.
 // fn filter_nongit_dirs(entry: &DirEntry) -> bool {
@@ -30,6 +32,17 @@ use std::path::Path;
 //     }
 // }
 
+fn bar() -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.enable_steady_tick(120);
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .tick_strings(&["⠏", "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇"])
+            .template("{spinner:.blue} {pos} {msg}"),
+    );
+    return pb;
+}
+
 #[cfg(any(unix, windows))]
 const SAME_FS_SUPPORTED: bool = true;
 
@@ -49,6 +62,8 @@ where
     let mut depth = 0;
     let mut doctags_stack = vec![];
     doctags_stack.reserve(10);
+    let pb = bar();
+    let started = Instant::now();
     for entry in walker {
         if let Ok(entry) = entry {
             if entry.depth() > depth {
@@ -63,7 +78,14 @@ where
             if let Some(path) = entry.path().to_str() {
                 let tags = all_tags(&doctags_stack, path.to_string());
                 out(&path, &tags);
+                pb.inc(1);
+                pb.set_message(path);
             }
         }
     }
+    pb.set_message(&format!(
+        "files indexed in {}.",
+        HumanDuration(started.elapsed())
+    ));
+    pb.finish_at_current_pos();
 }
