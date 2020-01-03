@@ -12,7 +12,7 @@ mod walk;
 use std::io::Write;
 use structopt::StructOpt;
 
-fn out_json(path: &str, tags: &Vec<&String>) {
+fn out_json(_id: u64, _parent_id: u64, path: &str, tags: &Vec<&String>) {
     println!(r#"{{"path":"{}","tags":{:?}}}"#, path, tags);
 }
 

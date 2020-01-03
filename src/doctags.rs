@@ -7,9 +7,9 @@ use toml::{self, Value};
 #[derive(Debug, Serialize)]
 pub struct DocTags {
     #[serde(rename = "tags", default)]
-    dirtags: Vec<String>,
+    pub dirtags: Vec<String>,
     #[serde(rename = "files", default)]
-    filetags: HashMap<String, Vec<String>>,
+    pub filetags: HashMap<String, Vec<String>>,
 }
 
 fn facet(tag: &str) -> String {
@@ -26,7 +26,11 @@ fn facet(tag: &str) -> String {
 // }
 
 impl DocTags {
-    fn from_toml(dir: &Path, toml: String, as_facets: bool) -> Result<DocTags, toml::de::Error> {
+    pub fn from_toml(
+        dir: &Path,
+        toml: String,
+        as_facets: bool,
+    ) -> Result<DocTags, toml::de::Error> {
         let config: Value = toml::from_str(&toml)?;
         let dirtags = if let Some(tags) = config.get("tags") {
             tag_value_to_vec(tags, as_facets)
@@ -86,28 +90,6 @@ pub fn read_doctags_file(dir: &Path, as_facets: bool) -> DocTags {
     }
 }
 
-type DocTagsStack = Vec<DocTags>;
-
-pub fn all_tags<'a>(stack: &'a DocTagsStack, path: String) -> Vec<&'a String> {
-    lazy_static! {
-        static ref NO_TAGS: Vec<String> = vec![];
-    }
-    stack
-        .iter()
-        // collect dirtags
-        .flat_map(|dt| &dt.dirtags)
-        // append filtetags if path has matching entry
-        .chain({
-            let filetags_entry = &stack[stack.len() - 1];
-            if let Some(filetags) = filetags_entry.filetags.get(&path) {
-                filetags.iter()
-            } else {
-                NO_TAGS.iter()
-            }
-        })
-        .collect()
-}
-
 pub fn add_tag(path: String, tag: String, recursive: bool) {
     let mut p = Path::new(&path);
     if !p.exists() {
@@ -131,48 +113,4 @@ pub fn add_tag(path: String, tag: String, recursive: bool) {
 
     let toml = toml::to_string(&doctags).unwrap();
     fs::write(toml_path, toml).expect("Couldn't write config file");
-}
-
-#[test]
-fn collect_tags() {
-    use std::env;
-
-    let toml = r#"
-        tags = ["lang:rust", "author:pka"]
-
-        [files]
-        "." = ["gitrepo"]
-        "Cargo.toml" = ["format:toml"]
-    "#;
-    let cwd = env::current_dir().unwrap();
-    let docttags = DocTags::from_toml(&cwd, toml.to_string(), true).unwrap();
-    let doctags_stack = vec![docttags];
-
-    let path = cwd.to_string_lossy().to_string();
-    assert_eq!(
-        all_tags(&doctags_stack, path),
-        vec!["/lang/rust", "/author/pka", "/gitrepo"]
-    );
-
-    let path = cwd.join("Cargo.toml").to_string_lossy().to_string();
-    assert_eq!(
-        all_tags(&doctags_stack, path),
-        vec!["/lang/rust", "/author/pka", "/format/toml"]
-    );
-
-    let path = cwd.join("Cargo.lock").to_string_lossy().to_string();
-    assert_eq!(
-        all_tags(&doctags_stack, path),
-        vec!["/lang/rust", "/author/pka"]
-    );
-
-    // without facet conversion
-    let docttags = DocTags::from_toml(&cwd, toml.to_string(), false).unwrap();
-    let doctags_stack = vec![docttags];
-
-    let path = cwd.to_string_lossy().to_string();
-    assert_eq!(
-        all_tags(&doctags_stack, path),
-        vec!["lang:rust", "author:pka", "gitrepo"]
-    );
 }
