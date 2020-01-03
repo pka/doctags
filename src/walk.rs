@@ -123,7 +123,7 @@ where
 
 fn bar() -> ProgressBar {
     let pb = ProgressBar::new_spinner();
-    pb.enable_steady_tick(120);
+    pb.set_draw_delta(101);
     pb.set_style(
         ProgressStyle::default_spinner()
             .tick_strings(&["⠏", "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇"])
