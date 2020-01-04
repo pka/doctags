@@ -1,0 +1,15 @@
+[package]
+name = "doctags-cli"
+version = "0.1.0"
+authors = ["Pirmin Kalberer <pka@sourcepole.ch>"]
+edition = "2018"
+
+[[bin]]
+path = "src/main.rs"
+name = "doctags"
+
+[dependencies]
+doctags = { path = "../doctags" }
+log = "0.4"
+env_logger = "0.7"
+structopt = { version = "0.3", default-features = false }

@@ -1,14 +1,7 @@
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate lazy_static;
 
-mod config;
-mod doctags;
-mod index;
-mod search;
-mod walk;
-
+use ::doctags::{config, doctags, index, search, walk};
 use std::io::Write;
 use structopt::StructOpt;
 
