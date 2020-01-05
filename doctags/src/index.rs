@@ -46,14 +46,14 @@ pub fn create(index_path: &String) -> tantivy::Result<IndexWriter> {
 
     let schema = build_schema();
 
-    let index = tantivy::Index::create_in_dir(&index_path, schema.clone())?;
-
-    let writer = index.writer(50_000_000)?;
-
     let id = schema.get_field("id").unwrap();
     let parent_id = schema.get_field("parent_id").unwrap();
     let path = schema.get_field("path").unwrap();
     let tags = schema.get_field("tags").unwrap();
+
+    let index = tantivy::Index::create_in_dir(&index_path, schema)?;
+
+    let writer = index.writer(50_000_000)?;
 
     Ok(IndexWriter {
         writer,
@@ -62,6 +62,28 @@ pub fn create(index_path: &String) -> tantivy::Result<IndexWriter> {
         path,
         tags,
     })
+}
+
+pub(crate) fn create_in_ram() -> tantivy::Result<(Index, IndexWriter)> {
+    let schema = build_schema();
+
+    let id = schema.get_field("id").unwrap();
+    let parent_id = schema.get_field("parent_id").unwrap();
+    let path = schema.get_field("path").unwrap();
+    let tags = schema.get_field("tags").unwrap();
+
+    let index = Index::create_in_ram(schema);
+
+    let writer = index.writer(6_000_000)?;
+    let index_writer = IndexWriter {
+        writer,
+        id,
+        parent_id,
+        path,
+        tags,
+    };
+
+    Ok((index, index_writer))
 }
 
 pub fn open(index_path: &String) -> tantivy::Result<Index> {
@@ -101,15 +123,11 @@ mod tests {
 
     #[test]
     fn create_index() -> tantivy::Result<()> {
-        let schema = build_schema();
-        let id = schema.get_field("id").unwrap();
-        let parent_id = schema.get_field("parent_id").unwrap();
-        let path = schema.get_field("path").unwrap();
+        let (index, mut idx) = create_in_ram().unwrap();
 
-        let index = Index::create_in_ram(build_schema());
-        let mut writer = index.writer(6_000_000)?;
-        writer.add_document(doc!(id => 3u64, parent_id => 2u64, path => "/root"));
-        writer.commit()?;
+        idx.writer
+            .add_document(doc!(idx.id => 3u64, idx.parent_id => 2u64, idx.path => "/root"));
+        let _ = idx.commit();
 
         let reader = index.reader()?;
         let searcher = reader.searcher();
