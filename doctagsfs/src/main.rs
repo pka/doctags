@@ -1,71 +1,66 @@
+#[macro_use]
+extern crate log;
+
+use ::doctags::{config, index, search, Index};
 use fuse::{
     FileAttr, FileType, Filesystem, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, Request,
 };
 use libc::ENOENT;
 use std::env;
 use std::ffi::OsStr;
+use std::fs;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::os::linux::fs::MetadataExt;
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
+use std::time::SystemTime;
 use time::Timespec;
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 }; // 1 second
 
-const CREATE_TIME: Timespec = Timespec {
-    sec: 1381237736,
-    nsec: 0,
-}; // 2013-10-08 08:56
+struct DoctagsFS {
+    index: Index,
+}
 
-const HELLO_DIR_ATTR: FileAttr = FileAttr {
-    ino: 1,
-    size: 0,
-    blocks: 0,
-    atime: CREATE_TIME,
-    mtime: CREATE_TIME,
-    ctime: CREATE_TIME,
-    crtime: CREATE_TIME,
-    kind: FileType::Directory,
-    perm: 0o755,
-    nlink: 2,
-    uid: 501,
-    gid: 20,
-    rdev: 0,
-    flags: 0,
-};
+const DOCSET: &str = "test";
+const BASEDIR: &str = "/home/pi/code/rust/doctags";
 
-const HELLO_TXT_CONTENT: &'static str = "Hello World!\n";
-
-const HELLO_TXT_ATTR: FileAttr = FileAttr {
-    ino: 2,
-    size: 13,
-    blocks: 1,
-    atime: CREATE_TIME,
-    mtime: CREATE_TIME,
-    ctime: CREATE_TIME,
-    crtime: CREATE_TIME,
-    kind: FileType::RegularFile,
-    perm: 0o644,
-    nlink: 1,
-    uid: 501,
-    gid: 20,
-    rdev: 0,
-    flags: 0,
-};
-
-struct HelloFS;
-
-impl Filesystem for HelloFS {
+impl Filesystem for DoctagsFS {
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
-        if parent == 1 && name.to_str() == Some("hello.txt") {
-            reply.entry(&TTL, &HELLO_TXT_ATTR, 0);
+        debug!("lookup parent: {} name: {}", parent, name.to_str().unwrap());
+        if let Ok(Some((id, path))) = search::file_from_dir_entry(&self.index, parent, name) {
+            if let Ok(attr) = file_attr(id, &path) {
+                reply.entry(&TTL, &attr, 0);
+                return;
+            }
         } else {
-            reply.error(ENOENT);
+            if parent == 1 {
+                if let Ok(attr) = file_attr(2, &BASEDIR.to_string()) {
+                    reply.entry(&TTL, &attr, 0);
+                    return;
+                }
+            }
         }
+        reply.error(ENOENT);
     }
 
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
-        match ino {
-            1 => reply.attr(&TTL, &HELLO_DIR_ATTR),
-            2 => reply.attr(&TTL, &HELLO_TXT_ATTR),
-            _ => reply.error(ENOENT),
+        debug!("getattr ino: {}", ino);
+        if let Ok(Some((id, path))) = search::file_from_id(&self.index, ino) {
+            if let Ok(attr) = file_attr(id, &path) {
+                reply.attr(&TTL, &attr);
+                return;
+            }
+        } else {
+            if ino == 1 {
+                if let Ok(attr) = file_attr(2, &BASEDIR.to_string()) {
+                    reply.attr(&TTL, &attr);
+                    return;
+                }
+            }
         }
+        reply.error(ENOENT);
     }
 
     fn read(
@@ -74,14 +69,21 @@ impl Filesystem for HelloFS {
         ino: u64,
         _fh: u64,
         offset: i64,
-        _size: u32,
+        size: u32,
         reply: ReplyData,
     ) {
-        if ino == 2 {
-            reply.data(&HELLO_TXT_CONTENT.as_bytes()[offset as usize..]);
-        } else {
-            reply.error(ENOENT);
+        debug!("read ino: {}", ino);
+        if let Ok(Some((_id, path))) = search::file_from_id(&self.index, ino) {
+            if let Ok(mut f) = File::open(path) {
+                f.seek(SeekFrom::Start(offset as u64)).unwrap();
+                let mut data = Vec::with_capacity(size as usize);
+                data.resize(size as usize, 0);
+                f.read(&mut data).unwrap();
+                reply.data(&data);
+                return;
+            }
         }
+        reply.error(ENOENT);
     }
 
     fn readdir(
@@ -92,31 +94,90 @@ impl Filesystem for HelloFS {
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
-        if ino != 1 {
-            reply.error(ENOENT);
-            return;
-        }
-
-        let entries = vec![
-            (1, FileType::Directory, "."),
-            (1, FileType::Directory, ".."),
-            (2, FileType::RegularFile, "hello.txt"),
+        debug!("readdir ino: {}", ino);
+        let dot_entries = vec![
+            (ino, FileType::Directory, "."),
+            (ino, FileType::Directory, ".."),
         ];
-
-        for (i, entry) in entries.into_iter().enumerate().skip(offset as usize) {
-            // i + 1 means the index of the next entry
+        for (i, entry) in dot_entries.into_iter().enumerate().skip(offset as usize) {
             reply.add(entry.0, (i + 1) as i64, entry.1, entry.2);
+        }
+        if let Ok(docs) = search::files_from_parent_id(&self.index, ino) {
+            for (i, (id, path)) in docs
+                .iter()
+                .enumerate()
+                .skip(offset.saturating_sub(2) as usize)
+            {
+                if let Ok((ft, basename)) = dir_entry(path) {
+                    debug!("[{}] {:?}", id, basename);
+                    reply.add(*id, (i + 3) as i64, ft, basename);
+                }
+            }
         }
         reply.ok();
     }
 }
 
+fn dir_entry<'a>(path: &'a String) -> std::io::Result<(FileType, &'a OsStr)> {
+    let attr = fs::metadata(path)?;
+    let ft = if attr.is_dir() {
+        FileType::Directory
+    } else {
+        FileType::RegularFile
+    };
+    let basename = Path::new(path).file_name().unwrap();
+    Ok((ft, basename))
+}
+
+fn timespec(st: &SystemTime) -> Timespec {
+    if let Ok(dur_since_epoch) = st.duration_since(std::time::UNIX_EPOCH) {
+        Timespec::new(
+            dur_since_epoch.as_secs() as i64,
+            dur_since_epoch.subsec_nanos() as i32,
+        )
+    } else {
+        Timespec::new(0, 0)
+    }
+}
+
+fn file_attr(id: u64, path: &String) -> std::io::Result<FileAttr> {
+    let meta = fs::metadata(path)?;
+    let ft = if meta.is_dir() {
+        FileType::Directory
+    } else {
+        FileType::RegularFile
+    };
+    let fattr = FileAttr {
+        ino: id,
+        size: meta.len(),
+        blocks: meta.st_blocks(),
+        atime: timespec(&meta.accessed().unwrap()),
+        mtime: timespec(&meta.modified().unwrap()),
+        ctime: timespec(&meta.created().unwrap()),
+        crtime: timespec(&meta.created().unwrap()),
+        kind: ft,
+        perm: meta.permissions().mode() as u16,
+        nlink: meta.st_nlink() as u32,
+        uid: meta.st_uid(),
+        gid: meta.st_gid(),
+        rdev: meta.st_rdev() as u32,
+        flags: 0,
+    };
+    Ok(fattr)
+}
+
 fn main() {
     env_logger::init();
+    let config = config::load_config();
+    let cfg = config
+        .docset_config(&DOCSET.to_string())
+        .expect("Docset config missing");
+    let index = index::open(&cfg.index).unwrap();
+    let fs = DoctagsFS { index };
     let mountpoint = env::args_os().nth(1).unwrap();
-    let options = ["-o", "ro", "-o", "fsname=hello"]
+    let options = ["-o", "ro", "-o", "fsname=doctags"]
         .iter()
         .map(|o| o.as_ref())
         .collect::<Vec<&OsStr>>();
-    fuse::mount(HelloFS, &mountpoint, &options).unwrap();
+    fuse::mount(fs, &mountpoint, &options).unwrap();
 }

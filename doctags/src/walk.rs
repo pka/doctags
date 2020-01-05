@@ -79,7 +79,7 @@ where
         .same_file_system(SAME_FS_SUPPORTED)
         .build();
     let mut depth = 0;
-    const ROOT_ID: u64 = 2; // FUSE root inode
+    const ROOT_ID: u64 = 1; // FUSE root inode
     let mut id: u64 = ROOT_ID;
     let mut doctags_stack: DocTagsStack = vec![];
     doctags_stack.reserve(10);

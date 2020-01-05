@@ -15,7 +15,7 @@ pub struct IndexWriter {
 fn build_schema() -> Schema {
     let mut schema_builder = Schema::builder();
 
-    schema_builder.add_u64_field("id", INDEXED);
+    schema_builder.add_u64_field("id", INDEXED | STORED);
     schema_builder.add_u64_field("parent_id", INDEXED);
     schema_builder.add_text_field("path", TEXT | STORED);
     schema_builder.add_facet_field("tags");

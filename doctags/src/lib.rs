@@ -8,3 +8,5 @@ pub mod doctags;
 pub mod index;
 pub mod search;
 pub mod walk;
+
+pub use tantivy::Index;

@@ -5,7 +5,9 @@ authors = ["Pirmin Kalberer <pka@sourcepole.ch>"]
 edition = "2018"
 
 [dependencies]
+doctags = { path = "../doctags" }
 fuse = "0.3"
 libc = "0.2"
+log = "0.4"
 env_logger = "0.7"
 time = "0.1"
