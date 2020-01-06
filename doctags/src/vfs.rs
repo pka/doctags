@@ -1,3 +1,4 @@
+use std::path::Path;
 use tantivy::collector::{FacetCollector, TopDocs};
 use tantivy::query::AllQuery;
 use tantivy::schema::*;
@@ -23,18 +24,39 @@ pub fn create_vfs_tree(index: &Index, vfs_index: &mut Index) -> tantivy::Result<
 
     let searcher = reader.searcher();
 
-    let tags = index.schema().get_field("tags").unwrap();
-    let mut facet_collector = FacetCollector::for_field(tags);
-    facet_collector.add_facet("/");
+    let tags_field = index.schema().get_field("tags").unwrap();
 
-    let mut id: u64 = 1;
+    let mut id: u64 = std::u64::MAX;
     let parent_id: u64 = 1;
-    let facets = searcher.search(&AllQuery, &facet_collector).unwrap();
-    for (facet, _count) in facets.get("/") {
-        id += 1;
+    let mut facet_collector = FacetCollector::for_field(tags_field);
+    facet_collector.add_facet("/");
+    let facet_counts = searcher.search(&AllQuery, &facet_collector).unwrap();
+    let mut facets = Vec::new();
+    for (facet, _count) in facet_counts.get("/") {
+        id -= 1;
+        facets.push((id, parent_id, facet.to_string()));
         let name: &str = &facet.to_string()[1..];
         writer.add_document(doc!(id_field => id, parent_id_field => parent_id, name_field => name));
     }
+
+    let mut facets2 = Vec::new();
+    for (parent_id, _, facetstr) in &facets {
+        let mut facet_collector = FacetCollector::for_field(tags_field);
+        facet_collector.add_facet(&facetstr);
+        let facet_counts = searcher.search(&AllQuery, &facet_collector).unwrap();
+        for (facet, _count) in facet_counts.get("/") {
+            id -= 1;
+            facets2.push((id, *parent_id, facet.to_string()));
+            let facetpath = facet.to_string();
+            let name = Path::new(&facetpath).file_name().unwrap().to_str().unwrap();
+            writer.add_document(
+                doc!(id_field => id, parent_id_field => *parent_id, name_field => name),
+            );
+        }
+    }
+    facets.append(&mut facets2);
+    dbg!(facets);
+
     writer.commit()?;
 
     Ok(())
@@ -83,7 +105,7 @@ mod tests {
         let reader = vfs_index.reader()?;
         let searcher = reader.searcher();
         let count = searcher.search(&AllQuery, &Count)?;
-        assert_eq!(count, 5);
+        assert_eq!(count, 9);
         let entries = searcher.search(&AllQuery, &TopDocs::with_limit(2))?;
         let (_score, doc_address) = entries.first().unwrap();
         let doc = searcher.doc(*doc_address)?;
