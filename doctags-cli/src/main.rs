@@ -133,10 +133,10 @@ fn main() {
         Cli::Stats {} => {
             println!("Configuration {:?}", config::config_fn());
             let config = config::load_config();
-            for cfg in config.docsets {
+            for cfg in config.docsets.iter().rev() {
                 println!("Docset '{}':", cfg.name);
                 let index = index::open(&cfg.index).unwrap();
-                search::count(&index, "*".to_string()).unwrap();
+                search::stats(&index).unwrap();
             }
         }
     }

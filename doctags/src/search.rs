@@ -51,6 +51,10 @@ pub fn doctags_query(index: &Index, text: &String) -> Box<dyn Query> {
 }
 
 pub fn search(index: &Index, text: String, limit: usize) -> tantivy::Result<()> {
+    let limit = if limit == 0 { 100_000 } else { limit };
+    let exclude_count = true;
+    let exclude_docs = false;
+
     let reader = index.reader()?;
 
     let searcher = reader.searcher();
@@ -59,11 +63,6 @@ pub fn search(index: &Index, text: String, limit: usize) -> tantivy::Result<()> 
     let path_field = index.schema().get_field("path").unwrap();
 
     let query = doctags_query(&index, &text);
-
-    let limit = if limit == 0 { 100_000 } else { limit };
-    let exclude_count = false;
-    let exclude_docs = false;
-    let facet_prefixes: Vec<&str> = vec![];
 
     let mut multi_collector = MultiCollector::new();
     let count_handle = if exclude_count {
@@ -76,16 +75,6 @@ pub fn search(index: &Index, text: String, limit: usize) -> tantivy::Result<()> 
     } else {
         Some(multi_collector.add_collector(TopDocs::with_limit(limit as usize)))
     };
-    let facet_handle = if facet_prefixes.is_empty() {
-        None
-    } else {
-        let tags_field = schema.get_field("tags").unwrap();
-        let mut facet_collector = FacetCollector::for_field(tags_field);
-        for facet_prefix in &facet_prefixes {
-            facet_collector.add_facet(facet_prefix);
-        }
-        Some(multi_collector.add_collector(facet_collector))
-    };
 
     // search index
     let mut multi_fruit = searcher.search(&query, &multi_collector).unwrap();
@@ -94,18 +83,6 @@ pub fn search(index: &Index, text: String, limit: usize) -> tantivy::Result<()> 
     if let Some(ch) = count_handle {
         let count = ch.extract(&mut multi_fruit) as i64;
         debug!("Match count: {}", count);
-    }
-
-    // facet
-    if let Some(fh) = facet_handle {
-        let facet_counts = fh.extract(&mut multi_fruit);
-        let mut facet_kv: HashMap<String, u64> = HashMap::new();
-        for facet_prefix in &facet_prefixes {
-            for (facet_key, facet_value) in facet_counts.get(facet_prefix) {
-                debug!("{}: {}", facet_key.to_string(), facet_value);
-                facet_kv.insert(facet_key.to_string(), facet_value);
-            }
-        }
     }
 
     // docs
@@ -238,20 +215,14 @@ fn doc_from_path(index: &Index, path: &String) -> tantivy::Result<Option<Documen
     }
 }
 
-pub fn count(index: &Index, text: String) -> tantivy::Result<()> {
+pub fn stats(index: &Index) -> tantivy::Result<()> {
     let reader = index.reader()?;
 
     let searcher = reader.searcher();
 
-    let query = if text.is_empty() {
-        Box::new(AllQuery)
-    } else {
-        raw_query(&index, &text)
-    };
+    let count = searcher.search(&AllQuery, &Count).unwrap();
 
-    let count = searcher.search(&query, &Count).unwrap();
-
-    println!("Match count: {}", &count);
+    println!("Total documents: {}", &count);
 
     let tags = index.schema().get_field("tags").unwrap();
     let mut facet_collector = FacetCollector::for_field(tags);
