@@ -7,23 +7,23 @@ use tantivy::schema::*;
 use tantivy::{self, Index};
 
 #[derive(PartialEq, Debug)]
-enum FsEntry {
+pub enum FsEntry {
     Tag(String),
+    Path(String),
 }
 
 pub struct VfsEntry {
-    id: u64,
-    parent_id: u64,
-    fs_entry: FsEntry,
+    pub id: u64,
+    pub entry: FsEntry,
 }
 
 pub struct DoctagsFS {
-    index: Index,
-    entries: Vec<VfsEntry>,
+    pub index: Index,
+    pub entries: Vec<VfsEntry>,
 }
 
 impl DoctagsFS {
-    pub fn create_vfs_tree(&self) -> Vec<VfsEntry> {
+    pub fn create_vfs_tree(&self) -> Vec<(VfsEntry, u64)> {
         let reader = self.index.reader().unwrap();
 
         let searcher = reader.searcher();
@@ -41,11 +41,13 @@ impl DoctagsFS {
             id -= 1;
             facets.push((id, parent_id, facet.to_string()));
             let name: &str = &facet.to_string()[1..];
-            entries.push(VfsEntry {
-                id,
+            entries.push((
+                VfsEntry {
+                    id,
+                    entry: FsEntry::Tag(name.to_string()),
+                },
                 parent_id,
-                fs_entry: FsEntry::Tag(name.to_string()),
-            });
+            ));
         }
 
         let mut facets2 = Vec::new();
@@ -58,11 +60,13 @@ impl DoctagsFS {
                 facets2.push((id, *parent_id, facet.to_string()));
                 let facetpath = facet.to_string();
                 let name = Path::new(&facetpath).file_name().unwrap().to_str().unwrap();
-                entries.push(VfsEntry {
-                    id,
-                    parent_id: *parent_id,
-                    fs_entry: FsEntry::Tag(name.to_string()),
-                });
+                entries.push((
+                    VfsEntry {
+                        id,
+                        entry: FsEntry::Tag(name.to_string()),
+                    },
+                    *parent_id,
+                ));
             }
         }
         facets.append(&mut facets2);
@@ -71,7 +75,7 @@ impl DoctagsFS {
         entries
     }
 
-    pub fn file_from_id(&self, id: u64) -> tantivy::Result<Option<(u64, String)>> {
+    pub fn file_from_id(&self, id: u64) -> tantivy::Result<Option<VfsEntry>> {
         let path_field = self.index.schema().get_field("path").unwrap();
         if let Ok(Some(doc)) = doc_from_id(&self.index, id) {
             let path = doc
@@ -80,12 +84,15 @@ impl DoctagsFS {
                 .text()
                 .unwrap()
                 .to_string();
-            return Ok(Some((id, path)));
+            return Ok(Some(VfsEntry {
+                id,
+                entry: FsEntry::Path(path),
+            }));
         }
         Ok(None)
     }
 
-    pub fn files_from_parent_id(&self, parent_id: u64) -> tantivy::Result<Vec<(u64, String)>> {
+    pub fn files_from_parent_id(&self, parent_id: u64) -> tantivy::Result<Vec<VfsEntry>> {
         let reader = self.index.reader()?;
 
         let searcher = reader.searcher();
@@ -110,7 +117,10 @@ impl DoctagsFS {
                 .text()
                 .unwrap()
                 .to_string();
-            docs.push((id, path));
+            docs.push(VfsEntry {
+                id,
+                entry: FsEntry::Path(path),
+            });
         }
         Ok(docs)
     }
@@ -119,7 +129,7 @@ impl DoctagsFS {
         &self,
         parent_id: u64,
         name: &OsStr,
-    ) -> tantivy::Result<Option<(u64, String)>> {
+    ) -> tantivy::Result<Option<VfsEntry>> {
         let path_field = self.index.schema().get_field("path").unwrap();
         let id_field = self.index.schema().get_field("id").unwrap();
 
@@ -137,7 +147,10 @@ impl DoctagsFS {
                 .to_string();
             if let Ok(Some(doc)) = doc_from_path(&self.index, &path) {
                 let id = doc.get_first(id_field).unwrap().u64_value();
-                return Ok(Some((id, path)));
+                return Ok(Some(VfsEntry {
+                    id,
+                    entry: FsEntry::Path(path),
+                }));
             }
         }
         Ok(None)
@@ -164,7 +177,7 @@ mod tests {
         };
         let entries = fs.create_vfs_tree();
         assert_eq!(entries.len(), 9);
-        assert_eq!(entries[0].fs_entry, FsEntry::Tag("author".to_string()));
+        assert_eq!(entries[0].0.entry, FsEntry::Tag("author".to_string()));
         Ok(())
     }
 }

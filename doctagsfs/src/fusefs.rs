@@ -1,4 +1,4 @@
-use crate::vfs::DoctagsFS;
+use crate::vfs::{DoctagsFS, FsEntry, VfsEntry};
 use fuse::{
     FileAttr, FileType, Filesystem, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, Request,
 };
@@ -20,16 +20,22 @@ const BASEDIR: &str = "/home/pi/code/rust/doctags";
 impl Filesystem for DoctagsFS {
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         debug!("lookup parent: {} name: {}", parent, name.to_str().unwrap());
-        if let Ok(Some((id, path))) = self.file_from_dir_entry(parent, name) {
-            if let Ok(attr) = file_attr(id, &path) {
-                reply.entry(&TTL, &attr, 0);
-                return;
-            }
-        } else {
-            if parent == 1 {
-                if let Ok(attr) = file_attr(2, &BASEDIR.to_string()) {
+        match self.file_from_dir_entry(parent, name) {
+            Ok(Some(VfsEntry {
+                id,
+                entry: FsEntry::Path(path),
+            })) => {
+                if let Ok(attr) = file_attr(id, &path) {
                     reply.entry(&TTL, &attr, 0);
                     return;
+                }
+            }
+            _ => {
+                if parent == 1 {
+                    if let Ok(attr) = file_attr(2, &BASEDIR.to_string()) {
+                        reply.entry(&TTL, &attr, 0);
+                        return;
+                    }
                 }
             }
         }
@@ -38,16 +44,22 @@ impl Filesystem for DoctagsFS {
 
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
         debug!("getattr ino: {}", ino);
-        if let Ok(Some((id, path))) = self.file_from_id(ino) {
-            if let Ok(attr) = file_attr(id, &path) {
-                reply.attr(&TTL, &attr);
-                return;
-            }
-        } else {
-            if ino == 1 {
-                if let Ok(attr) = file_attr(2, &BASEDIR.to_string()) {
+        match self.file_from_id(ino) {
+            Ok(Some(VfsEntry {
+                id,
+                entry: FsEntry::Path(path),
+            })) => {
+                if let Ok(attr) = file_attr(id, &path) {
                     reply.attr(&TTL, &attr);
                     return;
+                }
+            }
+            _ => {
+                if ino == 1 {
+                    if let Ok(attr) = file_attr(2, &BASEDIR.to_string()) {
+                        reply.attr(&TTL, &attr);
+                        return;
+                    }
                 }
             }
         }
@@ -64,15 +76,21 @@ impl Filesystem for DoctagsFS {
         reply: ReplyData,
     ) {
         debug!("read ino: {}", ino);
-        if let Ok(Some((_id, path))) = self.file_from_id(ino) {
-            if let Ok(mut f) = File::open(path) {
-                f.seek(SeekFrom::Start(offset as u64)).unwrap();
-                let mut data = Vec::with_capacity(size as usize);
-                data.resize(size as usize, 0);
-                f.read(&mut data).unwrap();
-                reply.data(&data);
-                return;
+        match self.file_from_id(ino) {
+            Ok(Some(VfsEntry {
+                id: _,
+                entry: FsEntry::Path(path),
+            })) => {
+                if let Ok(mut f) = File::open(path) {
+                    f.seek(SeekFrom::Start(offset as u64)).unwrap();
+                    let mut data = Vec::with_capacity(size as usize);
+                    data.resize(size as usize, 0);
+                    f.read(&mut data).unwrap();
+                    reply.data(&data);
+                    return;
+                }
             }
+            _ => {}
         }
         reply.error(ENOENT);
     }
@@ -93,15 +111,23 @@ impl Filesystem for DoctagsFS {
         for (i, entry) in dot_entries.into_iter().enumerate().skip(offset as usize) {
             reply.add(entry.0, (i + 1) as i64, entry.1, entry.2);
         }
-        if let Ok(docs) = self.files_from_parent_id(ino) {
-            for (i, (id, path)) in docs
+        if let Ok(files) = self.files_from_parent_id(ino) {
+            for (i, vfs_entry) in files
                 .iter()
                 .enumerate()
                 .skip(offset.saturating_sub(2) as usize)
             {
-                if let Ok((ft, basename)) = dir_entry(path) {
-                    debug!("[{}] {:?}", id, basename);
-                    reply.add(*id, (i + 3) as i64, ft, basename);
+                match vfs_entry {
+                    VfsEntry {
+                        id,
+                        entry: FsEntry::Path(path),
+                    } => {
+                        if let Ok((ft, basename)) = dir_entry(&path) {
+                            debug!("[{}] {:?}", id, basename);
+                            reply.add(*id, (i + 3) as i64, ft, basename);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
