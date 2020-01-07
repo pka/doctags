@@ -4,7 +4,7 @@ use std::path::Path;
 use tantivy::collector::{FacetCollector, TopDocs};
 use tantivy::query::{AllQuery, TermQuery};
 use tantivy::schema::*;
-use tantivy::{self, Index};
+use tantivy::{self, Document, Index};
 
 #[derive(PartialEq, Debug)]
 pub enum FsEntry {
@@ -75,18 +75,20 @@ impl DoctagsFS {
         entries
     }
 
-    pub fn file_from_id(&self, id: u64) -> tantivy::Result<Option<VfsEntry>> {
+    fn path_from_doc(&self, doc: Document) -> String {
         let path_field = self.index.schema().get_field("path").unwrap();
+        doc.get_first(path_field)
+            .unwrap()
+            .text()
+            .unwrap()
+            .to_string()
+    }
+
+    pub fn file_from_id(&self, id: u64) -> tantivy::Result<Option<VfsEntry>> {
         if let Ok(Some(doc)) = doc_from_id(&self.index, id) {
-            let path = doc
-                .get_first(path_field)
-                .unwrap()
-                .text()
-                .unwrap()
-                .to_string();
             return Ok(Some(VfsEntry {
                 id,
-                entry: FsEntry::Path(path),
+                entry: FsEntry::Path(self.path_from_doc(doc)),
             }));
         }
         Ok(None)
@@ -98,7 +100,6 @@ impl DoctagsFS {
         let searcher = reader.searcher();
 
         let schema = self.index.schema();
-        let path_field = self.index.schema().get_field("path").unwrap();
         let id_field = self.index.schema().get_field("id").unwrap();
         let parent_id_field = self.index.schema().get_field("parent_id").unwrap();
 
@@ -111,15 +112,9 @@ impl DoctagsFS {
             let doc = searcher.doc(doc_address)?;
             debug!("doc: {}", schema.to_json(&doc));
             let id = doc.get_first(id_field).unwrap().u64_value();
-            let path = doc
-                .get_first(path_field)
-                .unwrap()
-                .text()
-                .unwrap()
-                .to_string();
             docs.push(VfsEntry {
                 id,
-                entry: FsEntry::Path(path),
+                entry: FsEntry::Path(self.path_from_doc(doc)),
             });
         }
         Ok(docs)
@@ -130,16 +125,10 @@ impl DoctagsFS {
         parent_id: u64,
         name: &OsStr,
     ) -> tantivy::Result<Option<VfsEntry>> {
-        let path_field = self.index.schema().get_field("path").unwrap();
         let id_field = self.index.schema().get_field("id").unwrap();
 
         if let Ok(Some(doc)) = doc_from_id(&self.index, parent_id) {
-            let parent_path = doc
-                .get_first(path_field)
-                .unwrap()
-                .text()
-                .unwrap()
-                .to_string();
+            let parent_path = self.path_from_doc(doc);
             let path = Path::new(&parent_path)
                 .join(name)
                 .to_str()
