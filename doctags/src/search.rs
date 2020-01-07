@@ -1,6 +1,4 @@
 use regex::{Captures, Regex};
-use std::ffi::OsStr;
-use std::path::Path;
 use tantivy::collector::{Count, FacetCollector, MultiCollector, TopDocs};
 use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery};
 use tantivy::schema::{Facet, IndexRecordOption};
@@ -98,79 +96,7 @@ pub fn search(index: &Index, text: String, limit: usize) -> tantivy::Result<()> 
     Ok(())
 }
 
-pub fn file_from_id(index: &Index, id: u64) -> tantivy::Result<Option<(u64, String)>> {
-    let path_field = index.schema().get_field("path").unwrap();
-    if let Ok(Some(doc)) = doc_from_id(index, id) {
-        let path = doc
-            .get_first(path_field)
-            .unwrap()
-            .text()
-            .unwrap()
-            .to_string();
-        return Ok(Some((id, path)));
-    }
-    Ok(None)
-}
-
-pub fn files_from_parent_id(index: &Index, parent_id: u64) -> tantivy::Result<Vec<(u64, String)>> {
-    let reader = index.reader()?;
-
-    let searcher = reader.searcher();
-
-    let schema = index.schema();
-    let path_field = index.schema().get_field("path").unwrap();
-    let id_field = index.schema().get_field("id").unwrap();
-    let parent_id_field = index.schema().get_field("parent_id").unwrap();
-
-    let term = Term::from_field_u64(parent_id_field, parent_id);
-    let term_query = TermQuery::new(term, IndexRecordOption::Basic);
-    let top_docs = searcher.search(&term_query, &TopDocs::with_limit(100))?;
-
-    let mut docs = Vec::new();
-    for (_score, doc_address) in top_docs {
-        let doc = searcher.doc(doc_address)?;
-        debug!("doc: {}", schema.to_json(&doc));
-        let id = doc.get_first(id_field).unwrap().u64_value();
-        let path = doc
-            .get_first(path_field)
-            .unwrap()
-            .text()
-            .unwrap()
-            .to_string();
-        docs.push((id, path));
-    }
-    Ok(docs)
-}
-
-pub fn file_from_dir_entry(
-    index: &Index,
-    parent_id: u64,
-    name: &OsStr,
-) -> tantivy::Result<Option<(u64, String)>> {
-    let path_field = index.schema().get_field("path").unwrap();
-    let id_field = index.schema().get_field("id").unwrap();
-
-    if let Ok(Some(doc)) = doc_from_id(index, parent_id) {
-        let parent_path = doc
-            .get_first(path_field)
-            .unwrap()
-            .text()
-            .unwrap()
-            .to_string();
-        let path = Path::new(&parent_path)
-            .join(name)
-            .to_str()
-            .unwrap()
-            .to_string();
-        if let Ok(Some(doc)) = doc_from_path(index, &path) {
-            let id = doc.get_first(id_field).unwrap().u64_value();
-            return Ok(Some((id, path)));
-        }
-    }
-    Ok(None)
-}
-
-fn doc_from_id(index: &Index, id: u64) -> tantivy::Result<Option<Document>> {
+pub fn doc_from_id(index: &Index, id: u64) -> tantivy::Result<Option<Document>> {
     let id_field = index.schema().get_field("id").unwrap();
     let term = Term::from_field_u64(id_field, id);
     let term_query = TermQuery::new(term, IndexRecordOption::Basic);
@@ -189,7 +115,7 @@ fn search_single_doc(index: &Index, query: &TermQuery) -> tantivy::Result<Option
     }
 }
 
-fn doc_from_path(index: &Index, path: &String) -> tantivy::Result<Option<Document>> {
+pub fn doc_from_path(index: &Index, path: &String) -> tantivy::Result<Option<Document>> {
     let reader = index.reader()?;
 
     let searcher = reader.searcher();
