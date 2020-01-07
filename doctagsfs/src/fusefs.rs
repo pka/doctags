@@ -15,55 +15,51 @@ use time::Timespec;
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 }; // 1 second
 
-const BASEDIR: &str = "/home/pi/code/rust/doctags";
-
 impl Filesystem for DoctagsFS {
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         debug!("lookup parent: {} name: {}", parent, name.to_str().unwrap());
-        match self.file_from_dir_entry(parent, name) {
+        match self.entry_from_dir_entry(parent, name) {
+            Ok(Some(VfsEntry {
+                id,
+                entry: FsEntry::Tag(_tag),
+            })) => {
+                reply.entry(&TTL, &virtual_attr(id), 0);
+            }
             Ok(Some(VfsEntry {
                 id,
                 entry: FsEntry::Path(path),
             })) => {
                 if let Ok(attr) = file_attr(id, &path) {
                     reply.entry(&TTL, &attr, 0);
-                    return;
                 }
             }
             _ => {
-                if parent == 1 {
-                    if let Ok(attr) = file_attr(2, &BASEDIR.to_string()) {
-                        reply.entry(&TTL, &attr, 0);
-                        return;
-                    }
-                }
+                reply.error(ENOENT);
             }
         }
-        reply.error(ENOENT);
     }
 
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
         debug!("getattr ino: {}", ino);
-        match self.file_from_id(ino) {
+        match self.entry_from_id(ino) {
+            Ok(Some(VfsEntry {
+                id,
+                entry: FsEntry::Tag(_tag),
+            })) => {
+                reply.attr(&TTL, &virtual_attr(id));
+            }
             Ok(Some(VfsEntry {
                 id,
                 entry: FsEntry::Path(path),
             })) => {
                 if let Ok(attr) = file_attr(id, &path) {
                     reply.attr(&TTL, &attr);
-                    return;
                 }
             }
             _ => {
-                if ino == 1 {
-                    if let Ok(attr) = file_attr(2, &BASEDIR.to_string()) {
-                        reply.attr(&TTL, &attr);
-                        return;
-                    }
-                }
+                reply.error(ENOENT);
             }
         }
-        reply.error(ENOENT);
     }
 
     fn read(
@@ -76,7 +72,7 @@ impl Filesystem for DoctagsFS {
         reply: ReplyData,
     ) {
         debug!("read ino: {}", ino);
-        match self.file_from_id(ino) {
+        match self.entry_from_id(ino) {
             Ok(Some(VfsEntry {
                 id: _,
                 entry: FsEntry::Path(path),
@@ -87,12 +83,12 @@ impl Filesystem for DoctagsFS {
                     data.resize(size as usize, 0);
                     f.read(&mut data).unwrap();
                     reply.data(&data);
-                    return;
                 }
             }
-            _ => {}
+            _ => {
+                reply.error(ENOENT);
+            }
         }
-        reply.error(ENOENT);
     }
 
     fn readdir(
@@ -111,13 +107,20 @@ impl Filesystem for DoctagsFS {
         for (i, entry) in dot_entries.into_iter().enumerate().skip(offset as usize) {
             reply.add(entry.0, (i + 1) as i64, entry.1, entry.2);
         }
-        if let Ok(files) = self.files_from_parent_id(ino) {
+        if let Ok(files) = self.entries_from_parent_id(ino) {
             for (i, vfs_entry) in files
                 .iter()
                 .enumerate()
                 .skip(offset.saturating_sub(2) as usize)
             {
                 match vfs_entry {
+                    VfsEntry {
+                        id,
+                        entry: FsEntry::Tag(tag),
+                    } => {
+                        debug!("[{}] :{}", id, tag);
+                        reply.add(*id, (i + 3) as i64, FileType::Directory, tag);
+                    }
                     VfsEntry {
                         id,
                         entry: FsEntry::Path(path),
@@ -127,7 +130,6 @@ impl Filesystem for DoctagsFS {
                             reply.add(*id, (i + 3) as i64, ft, basename);
                         }
                     }
-                    _ => {}
                 }
             }
         }
@@ -154,6 +156,30 @@ fn timespec(st: &SystemTime) -> Timespec {
         )
     } else {
         Timespec::new(0, 0)
+    }
+}
+
+fn virtual_attr(id: u64) -> FileAttr {
+    const CREATE_TIME: Timespec = Timespec {
+        sec: 1381237736,
+        nsec: 0,
+    }; // 2013-10-08 08:56
+
+    FileAttr {
+        ino: id,
+        size: 0,
+        blocks: 0,
+        atime: CREATE_TIME,
+        mtime: CREATE_TIME,
+        ctime: CREATE_TIME,
+        crtime: CREATE_TIME,
+        kind: FileType::Directory,
+        perm: 0o755,
+        nlink: 2,
+        uid: 501,
+        gid: 20,
+        rdev: 0,
+        flags: 0,
     }
 }
 

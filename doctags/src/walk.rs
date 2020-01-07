@@ -79,8 +79,7 @@ where
         .same_file_system(SAME_FS_SUPPORTED)
         .build();
     let mut depth = 0;
-    const ROOT_ID: u64 = 1; // FUSE root inode
-    let mut id: u64 = ROOT_ID;
+    let mut id: u64 = 1; // we use doc ids > 1 (FUSE root inode)
     let mut doctags_stack: DocTagsStack = vec![];
     doctags_stack.reserve(10);
     let pb = bar();
@@ -97,7 +96,7 @@ where
             let parent_id = if depth > 0 {
                 doctags_stack[doctags_stack.len() - 1].id
             } else {
-                ROOT_ID
+                std::u64::MAX
             };
             if entry.file_type().unwrap().is_dir() {
                 let stack_entry = DocTagsStackEntry {

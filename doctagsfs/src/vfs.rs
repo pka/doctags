@@ -1,4 +1,5 @@
 use doctags::search::{doc_from_id, doc_from_path};
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
 use tantivy::collector::{FacetCollector, TopDocs};
@@ -6,48 +7,76 @@ use tantivy::query::{AllQuery, TermQuery};
 use tantivy::schema::*;
 use tantivy::{self, Document, Index};
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum FsEntry {
     Tag(String),
     Path(String),
 }
 
+#[derive(Clone, Debug)]
 pub struct VfsEntry {
     pub id: u64,
     pub entry: FsEntry,
 }
 
 pub struct DoctagsFS {
-    pub index: Index,
-    pub entries: Vec<VfsEntry>,
+    index: Index,
+    /// id -> entry
+    entries: HashMap<u64, VfsEntry>,
+    /// parent_id -> entry ids
+    children: HashMap<u64, Vec<u64>>,
 }
 
 impl DoctagsFS {
-    pub fn create_vfs_tree(&self) -> Vec<(VfsEntry, u64)> {
+    pub fn new(index: Index) -> DoctagsFS {
+        DoctagsFS {
+            index,
+            entries: HashMap::new(),
+            children: HashMap::new(),
+        }
+    }
+
+    fn add_tag_entry(&mut self, id: u64, parent_id: u64, tag: &str) {
+        self.entries.insert(
+            id,
+            VfsEntry {
+                id: id,
+                entry: FsEntry::Tag(tag.to_string()),
+            },
+        );
+        self.children
+            .entry(parent_id)
+            .or_insert(Vec::new())
+            .push(id);
+    }
+
+    pub fn create_vfs_tree(&mut self) {
         let reader = self.index.reader().unwrap();
 
         let searcher = reader.searcher();
 
-        let tags_field = self.index.schema().get_field("tags").unwrap();
+        const ROOT_ID: u64 = 1; // FUSE root inode
+        self.entries.insert(
+            ROOT_ID,
+            VfsEntry {
+                id: ROOT_ID,
+                entry: FsEntry::Tag("FUSEROOT".to_string()),
+            },
+        );
+        let mut id: u64 = std::u64::MAX; // we use ids down from std::u64::MAX
+        let parent_id: u64 = ROOT_ID;
+        self.add_tag_entry(id, parent_id, "_");
 
-        let mut id: u64 = std::u64::MAX;
-        let parent_id: u64 = 1;
+        let tags_field = self.index.schema().get_field("tags").unwrap();
         let mut facet_collector = FacetCollector::for_field(tags_field);
         facet_collector.add_facet("/");
         let facet_counts = searcher.search(&AllQuery, &facet_collector).unwrap();
-        let mut entries = Vec::new();
         let mut facets = Vec::new();
         for (facet, _count) in facet_counts.get("/") {
             id -= 1;
             facets.push((id, parent_id, facet.to_string()));
             let name: &str = &facet.to_string()[1..];
-            entries.push((
-                VfsEntry {
-                    id,
-                    entry: FsEntry::Tag(name.to_string()),
-                },
-                parent_id,
-            ));
+            self.add_tag_entry(id, parent_id, name);
         }
 
         let mut facets2 = Vec::new();
@@ -60,19 +89,13 @@ impl DoctagsFS {
                 facets2.push((id, *parent_id, facet.to_string()));
                 let facetpath = facet.to_string();
                 let name = Path::new(&facetpath).file_name().unwrap().to_str().unwrap();
-                entries.push((
-                    VfsEntry {
-                        id,
-                        entry: FsEntry::Tag(name.to_string()),
-                    },
-                    *parent_id,
-                ));
+                self.add_tag_entry(id, *parent_id, name);
             }
         }
         facets.append(&mut facets2);
         dbg!(facets);
-
-        entries
+        dbg!(&self.entries);
+        dbg!(&self.children);
     }
 
     fn path_from_doc(&self, doc: Document) -> String {
@@ -84,8 +107,10 @@ impl DoctagsFS {
             .to_string()
     }
 
-    pub fn file_from_id(&self, id: u64) -> tantivy::Result<Option<VfsEntry>> {
-        if let Ok(Some(doc)) = doc_from_id(&self.index, id) {
+    pub fn entry_from_id(&self, id: u64) -> tantivy::Result<Option<VfsEntry>> {
+        if let Some(entry) = self.entries.get(&id) {
+            return Ok(Some(entry.clone()));
+        } else if let Ok(Some(doc)) = doc_from_id(&self.index, id) {
             return Ok(Some(VfsEntry {
                 id,
                 entry: FsEntry::Path(self.path_from_doc(doc)),
@@ -94,52 +119,65 @@ impl DoctagsFS {
         Ok(None)
     }
 
-    pub fn files_from_parent_id(&self, parent_id: u64) -> tantivy::Result<Vec<VfsEntry>> {
-        let reader = self.index.reader()?;
+    pub fn entries_from_parent_id(&self, parent_id: u64) -> tantivy::Result<Vec<VfsEntry>> {
+        if let Some(ids) = self.children.get(&parent_id) {
+            Ok(ids.iter().map(|id| self.entries[id].clone()).collect())
+        } else {
+            let reader = self.index.reader()?;
 
-        let searcher = reader.searcher();
+            let searcher = reader.searcher();
 
-        let schema = self.index.schema();
-        let id_field = self.index.schema().get_field("id").unwrap();
-        let parent_id_field = self.index.schema().get_field("parent_id").unwrap();
+            let schema = self.index.schema();
+            let id_field = self.index.schema().get_field("id").unwrap();
+            let parent_id_field = self.index.schema().get_field("parent_id").unwrap();
 
-        let term = Term::from_field_u64(parent_id_field, parent_id);
-        let term_query = TermQuery::new(term, IndexRecordOption::Basic);
-        let top_docs = searcher.search(&term_query, &TopDocs::with_limit(100))?;
+            let term = Term::from_field_u64(parent_id_field, parent_id);
+            let term_query = TermQuery::new(term, IndexRecordOption::Basic);
+            let top_docs = searcher.search(&term_query, &TopDocs::with_limit(100))?;
 
-        let mut docs = Vec::new();
-        for (_score, doc_address) in top_docs {
-            let doc = searcher.doc(doc_address)?;
-            debug!("doc: {}", schema.to_json(&doc));
-            let id = doc.get_first(id_field).unwrap().u64_value();
-            docs.push(VfsEntry {
-                id,
-                entry: FsEntry::Path(self.path_from_doc(doc)),
-            });
+            let mut entries = Vec::new();
+            for (_score, doc_address) in top_docs {
+                let doc = searcher.doc(doc_address)?;
+                debug!("doc: {}", schema.to_json(&doc));
+                let id = doc.get_first(id_field).unwrap().u64_value();
+                entries.push(VfsEntry {
+                    id,
+                    entry: FsEntry::Path(self.path_from_doc(doc)),
+                });
+            }
+            Ok(entries)
         }
-        Ok(docs)
     }
 
-    pub fn file_from_dir_entry(
+    pub fn entry_from_dir_entry(
         &self,
         parent_id: u64,
         name: &OsStr,
     ) -> tantivy::Result<Option<VfsEntry>> {
-        let id_field = self.index.schema().get_field("id").unwrap();
+        if let Some(ids) = self.children.get(&parent_id) {
+            let entry = ids
+                .iter()
+                .map(|id| &self.entries[id])
+                .find(|e| e.entry == FsEntry::Tag(name.to_string_lossy().to_string()))
+                .map(|e| e.clone());
+            return Ok(entry);
+        } else {
+            let id_field = self.index.schema().get_field("id").unwrap();
 
-        if let Ok(Some(doc)) = doc_from_id(&self.index, parent_id) {
-            let parent_path = self.path_from_doc(doc);
-            let path = Path::new(&parent_path)
-                .join(name)
-                .to_str()
-                .unwrap()
-                .to_string();
-            if let Ok(Some(doc)) = doc_from_path(&self.index, &path) {
-                let id = doc.get_first(id_field).unwrap().u64_value();
-                return Ok(Some(VfsEntry {
-                    id,
-                    entry: FsEntry::Path(path),
-                }));
+            if let Ok(Some(doc)) = doc_from_id(&self.index, parent_id) {
+                let parent_path = self.path_from_doc(doc);
+                let path = Path::new(&parent_path)
+                    .join(name)
+                    .to_str()
+                    .unwrap()
+                    .to_string();
+                if let Ok(Some(doc)) = doc_from_path(&self.index, &path) {
+                    let id = doc.get_first(id_field).unwrap().u64_value();
+                    return Ok(Some(VfsEntry {
+                        id,
+                        entry: FsEntry::Path(path),
+                    }));
+                }
             }
         }
         Ok(None)
@@ -160,13 +198,15 @@ mod tests {
         });
         let _ = index_writer.commit();
 
-        let fs = DoctagsFS {
-            index,
-            entries: vec![],
-        };
-        let entries = fs.create_vfs_tree();
-        assert_eq!(entries.len(), 9);
-        assert_eq!(entries[0].0.entry, FsEntry::Tag("author".to_string()));
+        let mut fs = DoctagsFS::new(index);
+        fs.create_vfs_tree();
+        assert_eq!(fs.entries.len(), 9);
+        assert_eq!(
+            fs.entries[&(std::u64::MAX - 1)].entry,
+            FsEntry::Tag("author".to_string())
+        );
+        assert_eq!(fs.children.len(), 5);
+        assert_eq!(fs.children[&1].len(), 5);
         Ok(())
     }
 }

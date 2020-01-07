@@ -18,10 +18,8 @@ fn main() {
         .docset_config(&DOCSET.to_string())
         .expect("Docset config missing");
     let index = index::open(&cfg.index).unwrap();
-    let fs = DoctagsFS {
-        index,
-        entries: vec![],
-    };
+    let mut fs = DoctagsFS::new(index);
+    fs.create_vfs_tree();
     let mountpoint = env::args_os().nth(1).unwrap();
     let options = ["-o", "ro", "-o", "fsname=doctags"]
         .iter()
