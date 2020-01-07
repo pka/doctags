@@ -41,17 +41,24 @@ impl DocTags {
         if let Some(filetable) = config.get("files") {
             filetable
                 .as_table()
-                .expect("tags must be table type")
+                .expect(&format!(
+                    "tags must be table type in {}/.doctags.toml",
+                    dir.display()
+                ))
                 .iter()
                 .for_each(|(fname, tags)| {
-                    filetags.insert(
-                        dir.join(fname)
-                            .canonicalize()
-                            .unwrap()
-                            .to_string_lossy()
-                            .to_string(),
-                        tag_value_to_vec(tags, as_facets),
-                    );
+                    if let Ok(fullpath) = dir.join(fname).canonicalize() {
+                        filetags.insert(
+                            fullpath.to_string_lossy().to_string(),
+                            tag_value_to_vec(tags, as_facets),
+                        );
+                    } else {
+                        warn!(
+                            "Ignoring invalid files entry '{}' in {}/.doctags.toml",
+                            &fname,
+                            dir.display()
+                        );
+                    }
                 });
         }
         let doctags = DocTags { dirtags, filetags };
