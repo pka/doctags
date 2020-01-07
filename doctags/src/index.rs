@@ -64,7 +64,7 @@ pub fn create(index_path: &String) -> tantivy::Result<IndexWriter> {
     })
 }
 
-pub(crate) fn create_in_ram() -> tantivy::Result<(Index, IndexWriter)> {
+pub fn create_in_ram() -> tantivy::Result<(Index, IndexWriter)> {
     let schema = build_schema();
 
     let id = schema.get_field("id").unwrap();

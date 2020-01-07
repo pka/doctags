@@ -1,5 +1,4 @@
 use regex::{Captures, Regex};
-use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
 use tantivy::collector::{Count, FacetCollector, MultiCollector, TopDocs};

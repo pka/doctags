@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate log;
 
+mod vfs;
+
 use ::doctags::{config, index, search, Index};
 use fuse::{
     FileAttr, FileType, Filesystem, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, Request,

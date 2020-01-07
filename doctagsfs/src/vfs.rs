@@ -65,8 +65,8 @@ pub fn create_vfs_tree(index: &Index, vfs_index: &mut Index) -> tantivy::Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::index;
-    use crate::walk;
+    use doctags::index;
+    use doctags::walk;
     use tantivy::collector::Count;
     use tantivy::query::AllQuery;
 
