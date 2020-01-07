@@ -34,10 +34,9 @@ Search matching paths:
 
 Tagging examples:
 
-    echo -e "[files]\n"'"." = ["gitrepo"]' >/tmp/template.doctags.toml
-    find . -type d -name .git -exec cp /tmp/template.doctags.toml {}/../.doctags.toml \;
-
     for d in *t-rex*; do doctags tag $d project:t-rex; done
+
+    find . -type d -name .git -exec doctags tag --recursive false {}/.. gitrepo \;
 
 Update index:
 
