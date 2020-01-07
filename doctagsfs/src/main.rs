@@ -5,9 +5,9 @@ mod fusefs;
 mod vfs;
 
 use ::doctags::{config, index};
-use fusefs::DoctagsFS;
 use std::env;
 use std::ffi::OsStr;
+use vfs::DoctagsFS;
 
 const DOCSET: &str = "test";
 
@@ -18,7 +18,10 @@ fn main() {
         .docset_config(&DOCSET.to_string())
         .expect("Docset config missing");
     let index = index::open(&cfg.index).unwrap();
-    let fs = DoctagsFS { index };
+    let fs = DoctagsFS {
+        index,
+        entries: vec![],
+    };
     let mountpoint = env::args_os().nth(1).unwrap();
     let options = ["-o", "ro", "-o", "fsname=doctags"]
         .iter()

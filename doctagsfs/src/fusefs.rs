@@ -1,5 +1,4 @@
-use crate::vfs::{file_from_dir_entry, file_from_id, files_from_parent_id};
-use ::doctags::Index;
+use crate::vfs::DoctagsFS;
 use fuse::{
     FileAttr, FileType, Filesystem, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, Request,
 };
@@ -16,16 +15,12 @@ use time::Timespec;
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 }; // 1 second
 
-pub struct DoctagsFS {
-    pub index: Index,
-}
-
 const BASEDIR: &str = "/home/pi/code/rust/doctags";
 
 impl Filesystem for DoctagsFS {
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         debug!("lookup parent: {} name: {}", parent, name.to_str().unwrap());
-        if let Ok(Some((id, path))) = file_from_dir_entry(&self.index, parent, name) {
+        if let Ok(Some((id, path))) = self.file_from_dir_entry(parent, name) {
             if let Ok(attr) = file_attr(id, &path) {
                 reply.entry(&TTL, &attr, 0);
                 return;
@@ -43,7 +38,7 @@ impl Filesystem for DoctagsFS {
 
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
         debug!("getattr ino: {}", ino);
-        if let Ok(Some((id, path))) = file_from_id(&self.index, ino) {
+        if let Ok(Some((id, path))) = self.file_from_id(ino) {
             if let Ok(attr) = file_attr(id, &path) {
                 reply.attr(&TTL, &attr);
                 return;
@@ -69,7 +64,7 @@ impl Filesystem for DoctagsFS {
         reply: ReplyData,
     ) {
         debug!("read ino: {}", ino);
-        if let Ok(Some((_id, path))) = file_from_id(&self.index, ino) {
+        if let Ok(Some((_id, path))) = self.file_from_id(ino) {
             if let Ok(mut f) = File::open(path) {
                 f.seek(SeekFrom::Start(offset as u64)).unwrap();
                 let mut data = Vec::with_capacity(size as usize);
@@ -98,7 +93,7 @@ impl Filesystem for DoctagsFS {
         for (i, entry) in dot_entries.into_iter().enumerate().skip(offset as usize) {
             reply.add(entry.0, (i + 1) as i64, entry.1, entry.2);
         }
-        if let Ok(docs) = files_from_parent_id(&self.index, ino) {
+        if let Ok(docs) = self.files_from_parent_id(ino) {
             for (i, (id, path)) in docs
                 .iter()
                 .enumerate()
