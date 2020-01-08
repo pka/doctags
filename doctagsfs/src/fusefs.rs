@@ -99,7 +99,7 @@ impl Filesystem for DoctagsFS {
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
-        debug!("readdir ino: {}", ino);
+        debug!("readdir ino: {} offset: {}", ino, offset);
         let dot_entries = vec![
             (ino, FileType::Directory, "."),
             (ino, FileType::Directory, ".."),
@@ -107,11 +107,12 @@ impl Filesystem for DoctagsFS {
         for (i, entry) in dot_entries.into_iter().enumerate().skip(offset as usize) {
             reply.add(entry.0, (i + 1) as i64, entry.1, entry.2);
         }
+        let mut full = false;
         if let Ok(files) = self.entries_from_parent_id(ino) {
             for (i, vfs_entry) in files
                 .iter()
                 .enumerate()
-                .skip(offset.saturating_sub(2) as usize)
+                .skip((offset as usize).saturating_sub(2))
             {
                 match vfs_entry {
                     VfsEntry {
@@ -119,7 +120,7 @@ impl Filesystem for DoctagsFS {
                         entry: FsEntry::Tag(tag),
                     } => {
                         debug!("[{}] :{}", id, tag);
-                        reply.add(*id, (i + 3) as i64, FileType::Directory, tag);
+                        full = reply.add(*id, (i + 3) as i64, FileType::Directory, tag);
                     }
                     VfsEntry {
                         id,
@@ -127,9 +128,14 @@ impl Filesystem for DoctagsFS {
                     } => {
                         if let Ok((ft, basename)) = dir_entry(&path) {
                             debug!("[{}] {:?}", id, basename);
-                            reply.add(*id, (i + 3) as i64, ft, basename);
+                            full = reply.add(*id, (i + 3) as i64, ft, basename);
+                        } else {
+                            warn!("file '{}' in readdir not found", &path);
                         }
                     }
+                }
+                if full {
+                    break;
                 }
             }
         }

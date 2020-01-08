@@ -25,6 +25,8 @@ pub struct DoctagsFS {
     entries: HashMap<u64, VfsEntry>,
     /// parent_id -> entry ids
     children: HashMap<u64, Vec<u64>>,
+    /// parent_id -> query
+    queries: HashMap<u64, String>,
 }
 
 impl DoctagsFS {
@@ -33,6 +35,7 @@ impl DoctagsFS {
             index,
             entries: HashMap::new(),
             children: HashMap::new(),
+            queries: HashMap::new(),
         }
     }
 
@@ -55,47 +58,55 @@ impl DoctagsFS {
 
         let searcher = reader.searcher();
 
-        const ROOT_ID: u64 = 1; // FUSE root inode
         self.entries.insert(
-            ROOT_ID,
+            fuse::FUSE_ROOT_ID,
             VfsEntry {
-                id: ROOT_ID,
+                id: fuse::FUSE_ROOT_ID,
                 entry: FsEntry::Tag("FUSEROOT".to_string()),
             },
         );
         let mut id: u64 = std::u64::MAX; // we use ids down from std::u64::MAX
-        let parent_id: u64 = ROOT_ID;
+        let parent_id: u64 = fuse::FUSE_ROOT_ID;
         self.add_tag_entry(id, parent_id, "_");
 
         let tags_field = self.index.schema().get_field("tags").unwrap();
         let mut facet_collector = FacetCollector::for_field(tags_field);
         facet_collector.add_facet("/");
         let facet_counts = searcher.search(&AllQuery, &facet_collector).unwrap();
-        let mut facets = Vec::new();
+        let mut facets = HashMap::new();
         for (facet, _count) in facet_counts.get("/") {
             id -= 1;
-            facets.push((id, parent_id, facet.to_string()));
+            facets.insert(id, facet.to_string());
             let name: &str = &facet.to_string()[1..];
             self.add_tag_entry(id, parent_id, name);
         }
 
+        // TODO: support depth > 2 and combinations of tags
         let mut facets2 = Vec::new();
-        for (parent_id, _, facetstr) in &facets {
+        for (parent_id, facetstr) in &facets {
             let mut facet_collector = FacetCollector::for_field(tags_field);
             facet_collector.add_facet(&facetstr);
             let facet_counts = searcher.search(&AllQuery, &facet_collector).unwrap();
             for (facet, _count) in facet_counts.get("/") {
                 id -= 1;
-                facets2.push((id, *parent_id, facet.to_string()));
+                facets2.push((id, facet.to_string()));
                 let facetpath = facet.to_string();
                 let name = Path::new(&facetpath).file_name().unwrap().to_str().unwrap();
                 self.add_tag_entry(id, *parent_id, name);
             }
         }
-        facets.append(&mut facets2);
-        dbg!(facets);
-        dbg!(&self.entries);
-        dbg!(&self.children);
+        for (id, facet) in facets2 {
+            facets.insert(id, facet);
+        }
+
+        // Add facet query for each leaf in entries tree
+        for id in self.entries.keys() {
+            if !self.children.contains_key(id) {
+                if let Some(facet) = facets.get(id) {
+                    self.queries.insert(*id, facet.to_string());
+                }
+            }
+        }
     }
 
     fn path_from_doc(&self, doc: Document) -> String {
@@ -120,7 +131,32 @@ impl DoctagsFS {
     }
 
     pub fn entries_from_parent_id(&self, parent_id: u64) -> tantivy::Result<Vec<VfsEntry>> {
-        if let Some(ids) = self.children.get(&parent_id) {
+        if let Some(query) = self.queries.get(&parent_id) {
+            let reader = self.index.reader()?;
+
+            let searcher = reader.searcher();
+
+            let schema = self.index.schema();
+            let id_field = schema.get_field("id").unwrap();
+            let tags_field = schema.get_field("tags").unwrap();
+
+            let term = Term::from_facet(tags_field, &Facet::from(&query));
+            let term_query = TermQuery::new(term, IndexRecordOption::Basic);
+            // TODO: order by parent_id and limit to first sub level
+            let top_docs = searcher.search(&term_query, &TopDocs::with_limit(100))?;
+
+            let mut entries = Vec::new();
+            for (_score, doc_address) in top_docs {
+                let doc = searcher.doc(doc_address)?;
+                // debug!("doc: {}", schema.to_json(&doc));
+                let id = doc.get_first(id_field).unwrap().u64_value();
+                entries.push(VfsEntry {
+                    id,
+                    entry: FsEntry::Path(self.path_from_doc(doc)),
+                });
+            }
+            Ok(entries)
+        } else if let Some(ids) = self.children.get(&parent_id) {
             Ok(ids.iter().map(|id| self.entries[id].clone()).collect())
         } else {
             let reader = self.index.reader()?;
@@ -128,8 +164,8 @@ impl DoctagsFS {
             let searcher = reader.searcher();
 
             let schema = self.index.schema();
-            let id_field = self.index.schema().get_field("id").unwrap();
-            let parent_id_field = self.index.schema().get_field("parent_id").unwrap();
+            let id_field = schema.get_field("id").unwrap();
+            let parent_id_field = schema.get_field("parent_id").unwrap();
 
             let term = Term::from_field_u64(parent_id_field, parent_id);
             let term_query = TermQuery::new(term, IndexRecordOption::Basic);
@@ -138,7 +174,7 @@ impl DoctagsFS {
             let mut entries = Vec::new();
             for (_score, doc_address) in top_docs {
                 let doc = searcher.doc(doc_address)?;
-                debug!("doc: {}", schema.to_json(&doc));
+                // debug!("doc: {}", schema.to_json(&doc));
                 let id = doc.get_first(id_field).unwrap().u64_value();
                 entries.push(VfsEntry {
                     id,
@@ -161,6 +197,19 @@ impl DoctagsFS {
                 .find(|e| e.entry == FsEntry::Tag(name.to_string_lossy().to_string()))
                 .map(|e| e.clone());
             return Ok(entry);
+        } else if let Some(_query) = self.queries.get(&parent_id) {
+            // FIXME Return dummy file
+            return Ok(Some(VfsEntry {
+                id: 2,
+                entry: FsEntry::Path("/home/pi/code/rust/doctags".to_string()),
+            }));
+        } else if self.entries.contains_key(&parent_id) {
+            // special parent '_' for all files
+            // TODO: return base path
+            return Ok(Some(VfsEntry {
+                id: 2,
+                entry: FsEntry::Tag(name.to_string_lossy().to_string()),
+            }));
         } else {
             let id_field = self.index.schema().get_field("id").unwrap();
 
@@ -193,9 +242,10 @@ mod tests {
     #[test]
     fn vfs_tree_generation() -> tantivy::Result<()> {
         let (index, mut index_writer) = index::create_in_ram().unwrap();
-        walk::find(&"../..", |id, parent_id, path, tags| {
-            index_writer.add(id, parent_id, path, tags).unwrap()
-        });
+        walk::find(
+            &format!("{}/..", env!("CARGO_MANIFEST_DIR")),
+            |id, parent_id, path, tags| index_writer.add(id, parent_id, path, tags).unwrap(),
+        );
         let _ = index_writer.commit();
 
         let mut fs = DoctagsFS::new(index);
@@ -205,8 +255,9 @@ mod tests {
             fs.entries[&(std::u64::MAX - 1)].entry,
             FsEntry::Tag("author".to_string())
         );
-        assert_eq!(fs.children.len(), 5);
+        assert_eq!(fs.children.len(), 4);
         assert_eq!(fs.children[&1].len(), 5);
+        assert_eq!(fs.queries.len(), 4);
         Ok(())
     }
 }
