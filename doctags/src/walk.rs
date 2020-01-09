@@ -69,47 +69,49 @@ const SAME_FS_SUPPORTED: bool = true;
 const SAME_FS_SUPPORTED: bool = false;
 
 /// Find files
-pub fn find<F>(basedir: &str, mut out: F)
+pub fn find<F>(basedirs: &Vec<String>, mut out: F)
 where
     F: FnMut(u64, u64, &str, &Vec<&String>),
 {
-    let path = Path::new(basedir).canonicalize().unwrap();
-    let walker = WalkBuilder::new(path)
-        .follow_links(true)
-        .same_file_system(SAME_FS_SUPPORTED)
-        .build();
-    let mut depth = 0;
     let mut id: u64 = 1; // we use doc ids > 1 (FUSE root inode)
-    let mut doctags_stack: DocTagsStack = vec![];
-    doctags_stack.reserve(10);
     let pb = bar();
     let started = Instant::now();
-    for entry in walker {
-        if let Ok(entry) = entry {
-            if entry.depth() > depth {
-                depth = entry.depth();
-            } else if entry.depth() < depth {
-                depth = entry.depth();
-                doctags_stack.truncate(depth);
-            }
-            id += 1;
-            let parent_id = if depth > 0 {
-                doctags_stack[doctags_stack.len() - 1].id
-            } else {
-                std::u64::MAX
-            };
-            if entry.file_type().unwrap().is_dir() {
-                let stack_entry = DocTagsStackEntry {
-                    id,
-                    doctags: read_doctags_file(entry.path(), false),
+    for basedir in basedirs {
+        let path = Path::new(basedir).canonicalize().unwrap();
+        let walker = WalkBuilder::new(path)
+            .follow_links(true)
+            .same_file_system(SAME_FS_SUPPORTED)
+            .build();
+        let mut depth = 0;
+        let mut doctags_stack: DocTagsStack = vec![];
+        doctags_stack.reserve(10);
+        for entry in walker {
+            if let Ok(entry) = entry {
+                if entry.depth() > depth {
+                    depth = entry.depth();
+                } else if entry.depth() < depth {
+                    depth = entry.depth();
+                    doctags_stack.truncate(depth);
+                }
+                id += 1;
+                let parent_id = if depth > 0 {
+                    doctags_stack[doctags_stack.len() - 1].id
+                } else {
+                    std::u64::MAX
                 };
-                doctags_stack.push(stack_entry);
-            }
-            if let Some(path) = entry.path().to_str() {
-                let tags = all_tags(&doctags_stack, path.to_string());
-                out(id, parent_id, &path, &tags);
-                pb.inc(1);
-                pb.set_message(path);
+                if entry.file_type().unwrap().is_dir() {
+                    let stack_entry = DocTagsStackEntry {
+                        id,
+                        doctags: read_doctags_file(entry.path(), false),
+                    };
+                    doctags_stack.push(stack_entry);
+                }
+                if let Some(path) = entry.path().to_str() {
+                    let tags = all_tags(&doctags_stack, path.to_string());
+                    out(id, parent_id, &path, &tags);
+                    pb.inc(1);
+                    pb.set_message(path);
+                }
             }
         }
     }

@@ -90,7 +90,7 @@ fn main() {
             if git {
                 // walk::find_repos(&basedir, out_json);
             } else {
-                walk::find(&basedir, out_json);
+                walk::find(&vec![basedir], out_json);
             }
         }
         Cli::Index {

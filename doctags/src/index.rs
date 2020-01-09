@@ -25,11 +25,9 @@ fn build_schema() -> Schema {
 
 pub fn create_and_write(basedirs: &Vec<String>, index_path: &String) {
     let mut index_writer = create(index_path).unwrap();
-    for basedir in basedirs {
-        walk::find(&basedir, |id, parent_id, path, tags| {
-            index_writer.add(id, parent_id, path, tags).unwrap()
-        });
-    }
+    walk::find(basedirs, |id, parent_id, path, tags| {
+        index_writer.add(id, parent_id, path, tags).unwrap()
+    });
     let _ = index_writer.commit();
 }
 

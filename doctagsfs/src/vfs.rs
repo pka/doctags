@@ -243,7 +243,7 @@ mod tests {
     fn vfs_tree_generation() -> tantivy::Result<()> {
         let (index, mut index_writer) = index::create_in_ram().unwrap();
         walk::find(
-            &format!("{}/..", env!("CARGO_MANIFEST_DIR")),
+            &vec![format!("{}/..", env!("CARGO_MANIFEST_DIR"))],
             |id, parent_id, path, tags| index_writer.add(id, parent_id, path, tags).unwrap(),
         );
         let _ = index_writer.commit();
