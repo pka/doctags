@@ -4,3 +4,4 @@ members = [
   "doctags-cli",
   "doctagsfs",
 ]
+default-members = ["doctags-cli"]

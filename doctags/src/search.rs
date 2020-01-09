@@ -24,7 +24,7 @@ lazy_static! {
 pub fn doctags_query(index: &Index, text: &String) -> Box<dyn Query> {
     let mut tag_query = Vec::new();
     let tags_field = index.schema().get_field("tags").unwrap();
-    let raw = TAG_REGEX.replace_all(text, |caps: &Captures| {
+    let mut raw = TAG_REGEX.replace_all(text, |caps: &Captures| {
         let facet = caps[0].replace(":", "/");
         let query: Box<dyn Query> = Box::new(TermQuery::new(
             Term::from_facet(tags_field, &Facet::from(&facet)),
@@ -34,6 +34,9 @@ pub fn doctags_query(index: &Index, text: &String) -> Box<dyn Query> {
         // Remove from raw query string
         ""
     });
+    if raw.trim().is_empty() {
+        raw = std::borrow::Cow::Borrowed("*"); // match all
+    }
     let path_query = raw_query(index, &raw);
     if tag_query.is_empty() {
         path_query
