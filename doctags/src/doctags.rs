@@ -1,10 +1,10 @@
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use toml::{self, Value};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct DocTags {
     #[serde(rename = "tags", default)]
     pub dirtags: Vec<String>,
@@ -26,14 +26,11 @@ fn facet(tag: &str) -> String {
 // }
 
 impl DocTags {
-    pub fn from_toml(
-        dir: &Path,
-        toml: String,
-        as_facets: bool,
-    ) -> Result<DocTags, toml::de::Error> {
+    /// Read toml with conversion to facets and absolute paths
+    pub fn from_toml(dir: &Path, toml: String) -> Result<DocTags, toml::de::Error> {
         let config: Value = toml::from_str(&toml)?;
         let dirtags = if let Some(tags) = config.get("tags") {
-            tag_value_to_vec(tags, as_facets)
+            tag_value_to_vec(tags)
         } else {
             vec![]
         };
@@ -50,7 +47,7 @@ impl DocTags {
                     if let Ok(fullpath) = dir.join(fname).canonicalize() {
                         filetags.insert(
                             fullpath.to_string_lossy().to_string(),
-                            tag_value_to_vec(tags, as_facets),
+                            tag_value_to_vec(tags),
                         );
                     } else {
                         warn!(
@@ -66,27 +63,27 @@ impl DocTags {
     }
 }
 
-fn tag_value_to_vec(value: &Value, as_facets: bool) -> Vec<String> {
+fn tag_value_to_vec(value: &Value) -> Vec<String> {
     value
         .as_array()
         .expect("tags must be array type")
         .iter()
         .map(|tag| {
             let tagstr = tag.as_str().expect("tag must be string");
-            if as_facets {
-                facet(tagstr)
-            } else {
-                tagstr.to_string()
-            }
+            facet(tagstr)
         })
         .collect()
 }
 
-pub fn read_doctags_file(dir: &Path, as_facets: bool) -> DocTags {
+pub fn read_doctags_file(dir: &Path, raw: bool) -> DocTags {
     let path = dir.join(".doctags.toml");
     if path.exists() {
         if let Ok(toml) = fs::read_to_string(path) {
-            if let Ok(doctags) = DocTags::from_toml(dir, toml, as_facets) {
+            if raw {
+                if let Ok(doctags) = toml::from_str(&toml) {
+                    return doctags;
+                }
+            } else if let Ok(doctags) = DocTags::from_toml(dir, toml) {
                 return doctags;
             }
         }
@@ -98,22 +95,29 @@ pub fn read_doctags_file(dir: &Path, as_facets: bool) -> DocTags {
 }
 
 pub fn add_tag(path: String, tag: String, recursive: bool) {
-    let mut p = Path::new(&path);
+    let p = Path::new(&path);
     if !p.exists() {
         error!("File '{}' does not exist", path);
         return;
     }
-    let path = p.canonicalize().unwrap().to_string_lossy().to_string();
     let is_dir_tag = p.is_dir() && recursive;
-    if p.is_file() {
-        p = p.parent().expect("dirname not found");
-    }
-    let toml_path = p.join(".doctags.toml");
-    let mut doctags = read_doctags_file(p, false);
+    let dirp = if p.is_file() {
+        p.parent().expect("dirname not found")
+    } else {
+        p
+    };
+    let toml_path = dirp.join(".doctags.toml");
+    let mut doctags = read_doctags_file(dirp, true);
     if is_dir_tag {
         doctags.dirtags.push(tag);
     } else {
-        let filetags = doctags.filetags.entry(path).or_insert(vec![]);
+        // make relative to parent dir
+        let relpath = if p.is_dir() {
+            ".".to_string()
+        } else {
+            p.strip_prefix(dirp).unwrap().to_string_lossy().to_string()
+        };
+        let filetags = doctags.filetags.entry(relpath).or_insert(vec![]);
         (*filetags).push(tag);
     }
     debug!("Writing {:?}", toml_path);

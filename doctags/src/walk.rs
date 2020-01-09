@@ -101,7 +101,7 @@ where
             if entry.file_type().unwrap().is_dir() {
                 let stack_entry = DocTagsStackEntry {
                     id,
-                    doctags: read_doctags_file(entry.path(), true),
+                    doctags: read_doctags_file(entry.path(), false),
                 };
                 doctags_stack.push(stack_entry);
             }
@@ -143,7 +143,7 @@ fn collect_tags() {
         "Cargo.toml" = ["format:toml"]
     "#;
     let cwd = env::current_dir().unwrap();
-    let doctags = DocTags::from_toml(&cwd, toml.to_string(), true).unwrap();
+    let doctags = DocTags::from_toml(&cwd, toml.to_string()).unwrap();
     let doctags_stack = vec![DocTagsStackEntry { id: 3, doctags }];
 
     let path = cwd.to_string_lossy().to_string();
@@ -165,12 +165,12 @@ fn collect_tags() {
     );
 
     // without facet conversion
-    let doctags = DocTags::from_toml(&cwd, toml.to_string(), false).unwrap();
+    let doctags = toml::from_str(&toml).unwrap();
     let doctags_stack = vec![DocTagsStackEntry { id: 3, doctags }];
 
     let path = cwd.to_string_lossy().to_string();
     assert_eq!(
         all_tags(&doctags_stack, path),
-        vec!["lang:rust", "author:pka", "gitrepo"]
+        vec!["lang:rust", "author:pka"]
     );
 }
