@@ -19,7 +19,7 @@ pub struct Config {
 pub struct DocsetConfig {
     pub name: String,
     pub index: String,
-    pub basedir: String,
+    pub basedirs: Vec<String>,
 }
 
 pub fn config_fn() -> PathBuf {
@@ -63,7 +63,7 @@ impl Config {
     }
 }
 
-pub fn docset_config(name: String, index: Option<String>, basedir: String) -> DocsetConfig {
+pub fn docset_config(name: String, index: Option<String>, basedirs: Vec<String>) -> DocsetConfig {
     let index_dir = index.unwrap_or({
         let dir = match app_root(AppDataType::UserData, &APP_INFO) {
             Ok(mut dir) => {
@@ -74,15 +74,20 @@ pub fn docset_config(name: String, index: Option<String>, basedir: String) -> Do
         };
         dir
     });
-    let basedir = Path::new(&basedir)
-        .canonicalize()
-        .unwrap()
-        .to_string_lossy()
-        .to_string();
+    let basedirs = basedirs
+        .iter()
+        .map(|dir| {
+            Path::new(&dir)
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
     DocsetConfig {
         name,
         index: index_dir,
-        basedir,
+        basedirs,
     }
 }
 
@@ -92,12 +97,12 @@ fn read_config() {
         [[docset]]
         name = "default"
         index = "/tmp/idxdefault"
-        basedir = "/home/pi/Documents"
+        basedirs = ["/home/pi/Documents"]
 
         [[docset]]
         name = "code"
         index = "/tmp/idxcode"
-        basedir = "/home/pi/code"
+        basedirs = ["/home/pi/code"]
     "#;
     let config: Config = toml::from_str(cfg).unwrap();
     assert_eq!(config.docsets[0].name, "default");

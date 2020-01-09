@@ -99,17 +99,17 @@ fn main() {
             basedir,
         } => {
             let mut config = config::load_config();
-            let newcfg = config::docset_config(docset, index, basedir);
+            let newcfg = config::docset_config(docset, index, vec![basedir]);
             info!("Writing configuration to {:?}", config::config_fn());
             let cfg = config.update_docset_config(newcfg).unwrap();
-            index::create_and_write(&cfg.basedir, &cfg.index);
+            index::create_and_write(&cfg.basedirs, &cfg.index);
         }
         Cli::Reindex { docset } => {
             let config = config::load_config();
             let cfg = config
                 .docset_config(&docset)
                 .expect("Docset config missing");
-            index::create_and_write(&cfg.basedir, &cfg.index);
+            index::create_and_write(&cfg.basedirs, &cfg.index);
         }
         Cli::Tag {
             path,
