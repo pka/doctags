@@ -9,18 +9,17 @@ use std::env;
 use std::ffi::OsStr;
 use vfs::DoctagsFS;
 
-const DOCSET: &str = "test";
-
 fn main() {
+    let mountpoint = env::args_os().nth(1).expect("mount point expected");
+    let docset = std::env::args().nth(2).unwrap_or("default".to_string());
     env_logger::init();
     let config = config::load_config();
     let cfg = config
-        .docset_config(&DOCSET.to_string())
+        .docset_config(&docset)
         .expect("Docset config missing");
     let index = index::open(&cfg.index).unwrap();
     let mut fs = DoctagsFS::new(index);
     fs.create_vfs_tree();
-    let mountpoint = env::args_os().nth(1).unwrap();
     let options = ["-o", "ro", "-o", "fsname=doctags"]
         .iter()
         .map(|o| o.as_ref())
