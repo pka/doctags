@@ -49,8 +49,14 @@ Search tagged paths:
 
 Mount virtual file system:
 
-    doctagsfs /mnt/doctags
+    doctagsfs default /mnt/doctags
 
 Unmount:
 
     sudo fusermount -u /mnt/doctags
+
+Mount from fstab:
+
+    sudo ln -s $HOME/.cargo/bin/doctagsfs /sbin/mount.doctags
+    echo "default   /mnt/doctags    doctags   noauto,ro,user,exec    0 0" | sudo tee -a /etc/fstab
+    mount /mnt/doctags

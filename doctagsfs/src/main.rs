@@ -5,13 +5,16 @@ mod fusefs;
 mod vfs;
 
 use ::doctags::{config, index};
+use fork::{daemon, Fork};
 use std::env;
 use std::ffi::OsStr;
 use vfs::DoctagsFS;
 
 fn main() {
-    let mountpoint = env::args_os().nth(1).expect("mount point expected");
-    let docset = std::env::args().nth(2).unwrap_or("default".to_string());
+    // mount helper options (https://linux.die.net/man/8/mount):
+    // /sbin/mount.<suffix> spec dir [-sfnv] [-o options] [-t type.subtype]
+    let docset = std::env::args().nth(1).expect("docset expected");
+    let mountpoint = env::args_os().nth(2).expect("mount point expected");
     env_logger::init();
     let config = config::load_config();
     let cfg = config
@@ -24,5 +27,8 @@ fn main() {
         .iter()
         .map(|o| o.as_ref())
         .collect::<Vec<&OsStr>>();
-    fuse::mount(fs, &mountpoint, &options).unwrap();
+
+    if let Ok(Fork::Child) = daemon(false, true) {
+        fuse::mount(fs, &mountpoint, &options).unwrap();
+    }
 }
