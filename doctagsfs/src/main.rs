@@ -5,21 +5,20 @@ mod fusefs;
 mod vfs;
 
 use ::doctags::{config, index};
+use anyhow::{Context, Result};
 use fork::{daemon, Fork};
 use std::env;
 use std::ffi::OsStr;
 use vfs::DoctagsFS;
 
-fn main() {
+fn main() -> Result<()> {
     // mount helper options (https://linux.die.net/man/8/mount):
     // /sbin/mount.<suffix> spec dir [-sfnv] [-o options] [-t type.subtype]
-    let docset = std::env::args().nth(1).expect("docset expected");
-    let mountpoint = env::args_os().nth(2).expect("mount point expected");
+    let docset = std::env::args().nth(1).context("docset expected")?;
+    let mountpoint = env::args_os().nth(2).context("mount point expected")?;
     env_logger::init();
-    let config = config::load_config();
-    let cfg = config
-        .docset_config(&docset)
-        .expect("Docset config missing");
+    let config = config::load_config()?;
+    let cfg = config.docset_config(&docset)?;
     let index = index::open(&cfg.index).unwrap();
     let mut fs = DoctagsFS::new(index);
     fs.create_vfs_tree();
@@ -31,4 +30,5 @@ fn main() {
     if let Ok(Fork::Child) = daemon(false, true) {
         fuse::mount(fs, &mountpoint, &options).unwrap();
     }
+    Ok(())
 }

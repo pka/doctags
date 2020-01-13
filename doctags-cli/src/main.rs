@@ -2,6 +2,7 @@
 extern crate log;
 
 use ::doctags::{config, doctags, index, search, walk};
+use anyhow::Result;
 use std::io::Write;
 use structopt::StructOpt;
 
@@ -83,9 +84,8 @@ fn setup_logger() {
     }
 }
 
-fn main() {
-    setup_logger();
-    match Cli::from_args() {
+fn command(cli_args: Cli) -> Result<()> {
+    match cli_args {
         Cli::Scan { git, basedir } => {
             if git {
                 // walk::find_repos(&basedir, out_json);
@@ -98,46 +98,49 @@ fn main() {
             index,
             basedir,
         } => {
-            let mut config = config::load_config();
-            let newcfg = config::docset_config(docset, index, vec![basedir]);
+            let mut config = config::load_config()?;
+            let newcfg = config::docset_config(docset, index, vec![basedir])?;
             info!("Writing configuration to {:?}", config::config_fn());
-            let cfg = config.update_docset_config(newcfg).unwrap();
+            let cfg = config.update_docset_config(newcfg)?;
             index::create_and_write(&cfg.basedirs, &cfg.index);
         }
         Cli::Reindex { docset } => {
-            let config = config::load_config();
-            let cfg = config
-                .docset_config(&docset)
-                .expect("Docset config missing");
+            let config = config::load_config()?;
+            let cfg = config.docset_config(&docset)?;
             index::create_and_write(&cfg.basedirs, &cfg.index);
         }
         Cli::Tag {
             path,
             tag,
             recursive,
-        } => {
-            doctags::add_tag(path, tag, recursive);
-        }
+        } => doctags::add_tag(path, tag, recursive)?,
         Cli::Search {
             docset,
             text,
             limit,
         } => {
-            let config = config::load_config();
-            let cfg = config
-                .docset_config(&docset)
-                .expect("Docset config missing");
+            let config = config::load_config()?;
+            let cfg = config.docset_config(&docset)?;
             let index = index::open(&cfg.index).unwrap();
             search::search(&index, text, limit).unwrap();
         }
         Cli::Stats {} => {
             println!("Configuration {:?}", config::config_fn());
-            let config = config::load_config();
+            let config = config::load_config()?;
             for cfg in config.docsets.iter().rev() {
                 println!("Docset '{}':", cfg.name);
                 let index = index::open(&cfg.index).unwrap();
                 search::stats(&index).unwrap();
             }
         }
+    }
+    Ok(())
+}
+
+fn main() {
+    setup_logger();
+    match command(Cli::from_args()) {
+        Err(e) => error!("{}", e),
+        Ok(_) => (),
     }
 }

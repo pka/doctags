@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -27,10 +28,10 @@ fn facet(tag: &str) -> String {
 
 impl DocTags {
     /// Read toml with conversion to facets and absolute paths
-    pub fn from_toml(dir: &Path, toml: String) -> Result<DocTags, toml::de::Error> {
+    pub fn from_toml(dir: &Path, toml: String) -> Result<DocTags> {
         let config: Value = toml::from_str(&toml)?;
         let dirtags = if let Some(tags) = config.get("tags") {
-            tag_value_to_vec(tags)
+            tag_value_to_vec(tags)?
         } else {
             vec![]
         };
@@ -38,16 +39,15 @@ impl DocTags {
         if let Some(filetable) = config.get("files") {
             filetable
                 .as_table()
-                .expect(&format!(
-                    "tags must be table type in {}/.doctags.toml",
-                    dir.display()
-                ))
+                .with_context(|| {
+                    format!("tags must be table type in {}/.doctags.toml", dir.display())
+                })?
                 .iter()
                 .for_each(|(fname, tags)| {
                     if let Ok(fullpath) = dir.join(fname).canonicalize() {
                         filetags.insert(
                             fullpath.to_string_lossy().to_string(),
-                            tag_value_to_vec(tags),
+                            tag_value_to_vec(tags).expect("tag_value_to_vec error"), // TODO
                         );
                     } else {
                         warn!(
@@ -63,16 +63,17 @@ impl DocTags {
     }
 }
 
-fn tag_value_to_vec(value: &Value) -> Vec<String> {
-    value
+fn tag_value_to_vec(value: &Value) -> Result<Vec<String>> {
+    let facets = value
         .as_array()
-        .expect("tags must be array type")
+        .context("tags must be array type")?
         .iter()
         .map(|tag| {
-            let tagstr = tag.as_str().expect("tag must be string");
+            let tagstr = tag.as_str().expect("tag must be string"); // TODO
             facet(tagstr)
         })
-        .collect()
+        .collect();
+    Ok(facets)
 }
 
 pub fn read_doctags_file(dir: &Path, raw: bool) -> DocTags {
@@ -94,15 +95,14 @@ pub fn read_doctags_file(dir: &Path, raw: bool) -> DocTags {
     }
 }
 
-pub fn add_tag(path: String, tag: String, recursive: bool) {
+pub fn add_tag(path: String, tag: String, recursive: bool) -> Result<()> {
     let p = Path::new(&path);
     if !p.exists() {
-        error!("File '{}' does not exist", path);
-        return;
+        return Err(anyhow!("File '{}' does not exist", path));
     }
     let is_dir_tag = p.is_dir() && recursive;
     let dirp = if p.is_file() {
-        p.parent().expect("dirname not found")
+        p.parent().context("dirname not found")?
     } else {
         p
     };
@@ -115,13 +115,39 @@ pub fn add_tag(path: String, tag: String, recursive: bool) {
         let relpath = if p.is_dir() {
             ".".to_string()
         } else {
-            p.strip_prefix(dirp).unwrap().to_string_lossy().to_string()
+            p.strip_prefix(dirp)?.to_string_lossy().to_string()
         };
         let filetags = doctags.filetags.entry(relpath).or_insert(vec![]);
         (*filetags).push(tag);
     }
     debug!("Writing {:?}", toml_path);
 
-    let toml = toml::to_string(&doctags).unwrap();
-    fs::write(toml_path, toml).expect("Couldn't write config file");
+    let toml = toml::to_string(&doctags)?;
+    fs::write(&toml_path, toml)
+        .with_context(|| format!("Couldn't write config file {:?}", toml_path))?;
+    Ok(())
+}
+
+#[test]
+fn parse_toml() -> Result<()> {
+    use std::env;
+
+    let toml = r#"
+        tags = ["lang:rust", "author:pka"]
+
+        [files]
+        "." = ["gitrepo"]
+        "Cargo.toml" = ["format:toml"]
+    "#;
+    let cwd = env::current_dir()?;
+    let doctags = DocTags::from_toml(&cwd, toml.to_string());
+    assert!(doctags.is_ok());
+
+    let toml = "tags =";
+    let doctags = DocTags::from_toml(&cwd, toml.to_string());
+    assert_eq!(
+        format!("#{:?}", doctags),
+        "#Err(unexpected eof encountered at line 1 column 7)"
+    );
+    Ok(())
 }

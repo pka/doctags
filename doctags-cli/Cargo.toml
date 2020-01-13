@@ -12,4 +12,5 @@ name = "doctags"
 doctags = { path = "../doctags" }
 log = "0.4"
 env_logger = "0.7"
+anyhow = "1.0"
 structopt = { version = "0.3", default-features = false }

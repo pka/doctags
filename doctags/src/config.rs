@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use app_dirs::{app_root, AppDataType, AppInfo};
 use serde_derive::{Deserialize, Serialize};
 use std::fs;
@@ -22,77 +23,80 @@ pub struct DocsetConfig {
     pub basedirs: Vec<String>,
 }
 
-pub fn config_fn() -> PathBuf {
-    let config = match app_root(AppDataType::UserConfig, &APP_INFO) {
-        Ok(mut dir) => {
+pub fn config_fn() -> Result<PathBuf> {
+    app_root(AppDataType::UserConfig, &APP_INFO)
+        .map(|mut dir| {
             dir.push("config.toml");
             dir
-        }
-        Err(_) => panic!("Could not determine UserConfig directory"),
-    };
-    config
+        })
+        .context("Could not determine UserConfig directory")
 }
 
-pub fn load_config() -> Config {
-    let fname = config_fn();
+pub fn load_config() -> Result<Config> {
+    let fname = config_fn()?;
     if !fname.exists() {
-        fs::File::create(&fname).expect("Unable to create config file");
+        fs::File::create(&fname)
+            .with_context(|| format!("Unable to create config file {:?}", fname))?;
     }
-    let toml = fs::read_to_string(&fname).expect("Couldn't read config file");
-    toml::from_str(&toml).unwrap()
+    let toml = fs::read_to_string(&fname).context("Couldn't read config file")?;
+    toml::from_str(&toml).context("Toml syntax error")
 }
 
 impl Config {
-    pub fn docset_config(&self, name: &String) -> Option<&DocsetConfig> {
-        self.docsets.iter().find(|cfg| cfg.name == *name)
+    pub fn docset_config(&self, name: &String) -> Result<&DocsetConfig> {
+        self.docsets
+            .iter()
+            .find(|cfg| cfg.name == *name)
+            .ok_or(anyhow!("Docset config missing"))
     }
-    pub fn update_docset_config(&mut self, config: DocsetConfig) -> Option<&DocsetConfig> {
+    pub fn update_docset_config(&mut self, config: DocsetConfig) -> Result<&DocsetConfig> {
         if let Some(idx) = self.docsets.iter().position(|cfg| cfg.name == *config.name) {
             self.docsets[idx] = config;
-            self.save();
-            self.docsets.get(idx)
+            self.save()?;
+            self.docsets.get(idx).ok_or(anyhow!("Docset not found"))
         } else {
             self.docsets.push(config);
-            self.save();
-            self.docsets.last()
+            self.save()?;
+            self.docsets.last().ok_or(anyhow!("Docset not found"))
         }
     }
-    pub fn save(&self) {
-        let toml = toml::to_string(&self).unwrap();
-        fs::write(config_fn(), toml).expect("Couldn't write config file");
+    pub fn save(&self) -> Result<()> {
+        let toml = toml::to_string(&self)?;
+        fs::write(config_fn()?, toml).context("Couldn't write config file")?;
+        Ok(())
     }
 }
 
-pub fn docset_config(name: String, index: Option<String>, basedirs: Vec<String>) -> DocsetConfig {
+pub fn docset_config(
+    name: String,
+    index: Option<String>,
+    basedirs: Vec<String>,
+) -> Result<DocsetConfig> {
     let index_dir = index.unwrap_or({
-        let dir = match app_root(AppDataType::UserData, &APP_INFO) {
-            Ok(mut dir) => {
-                dir.push(&name);
-                dir.to_string_lossy().to_string()
-            }
-            Err(_) => panic!("Could not determine UserData directory"),
-        };
-        dir
+        app_root(AppDataType::UserData, &APP_INFO).map(|mut dir| {
+            dir.push(&name);
+            dir.to_string_lossy().to_string()
+        })?
     });
     let basedirs = basedirs
         .iter()
         .map(|dir| {
             Path::new(&dir)
                 .canonicalize()
-                .unwrap()
+                .unwrap() // TODO
                 .to_string_lossy()
                 .to_string()
         })
         .collect();
-    DocsetConfig {
+    Ok(DocsetConfig {
         name,
         index: index_dir,
         basedirs,
-    }
+    })
 }
 
 #[test]
-fn read_config() {
+fn read_config() -> Result<()> {
     let cfg = r#"
         [[docset]]
         name = "default"
@@ -104,9 +108,10 @@ fn read_config() {
         index = "/tmp/idxcode"
         basedirs = ["/home/pi/code"]
     "#;
-    let config: Config = toml::from_str(cfg).unwrap();
+    let config: Config = toml::from_str(cfg)?;
     assert_eq!(config.docsets[0].name, "default");
 
-    let toml = toml::to_string(&config).unwrap();
+    let toml = toml::to_string(&config)?;
     assert!(toml.contains(r#"name = "default""#));
+    Ok(())
 }
