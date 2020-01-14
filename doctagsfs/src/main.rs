@@ -19,16 +19,16 @@ fn main() -> Result<()> {
     env_logger::init();
     let config = config::load_config()?;
     let cfg = config.docset_config(&docset)?;
-    let index = index::open(&cfg.index).unwrap();
+    let index = index::open(&cfg.index)?;
     let mut fs = DoctagsFS::new(index);
-    fs.create_vfs_tree();
+    fs.create_vfs_tree()?;
     let options = ["-o", "ro", "-o", "fsname=doctags"]
         .iter()
         .map(|o| o.as_ref())
         .collect::<Vec<&OsStr>>();
 
     if let Ok(Fork::Child) = daemon(false, true) {
-        fuse::mount(fs, &mountpoint, &options).unwrap();
+        fuse::mount(fs, &mountpoint, &options)?;
     }
     Ok(())
 }

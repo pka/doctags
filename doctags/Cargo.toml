@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 tantivy = "0.11"
+failure = "0.1" # Required for converting tantivy errors
 ignore = "0.4"
 memchr = "2.1"
 toml = "0.5"

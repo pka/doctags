@@ -1,3 +1,5 @@
+use anyhow::{Context, Result};
+use failure::ResultExt;
 use regex::{Captures, Regex};
 use tantivy::collector::{Count, FacetCollector, MultiCollector, TopDocs};
 use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery};
@@ -7,11 +9,14 @@ use tantivy::{self, Document, Index, Term};
 /// Create query with [Tantivy Query parser](https://docs.rs/tantivy/0.11.3/tantivy/query/struct.QueryParser.html)
 ///
 /// Search term example: `path:csv OR path:pdf`
-pub fn raw_query(index: &Index, text: &str) -> Box<dyn Query> {
-    let path_field = index.schema().get_field("path").unwrap();
+pub fn raw_query(index: &Index, text: &str) -> Result<Box<dyn Query>> {
+    let path_field = index
+        .schema()
+        .get_field("path")
+        .context("Field 'path' not found")?;
     let query_parser = QueryParser::for_index(&index, vec![path_field]);
 
-    query_parser.parse_query(text).unwrap()
+    Ok(query_parser.parse_query(text).compat()?)
 }
 
 lazy_static! {
@@ -21,9 +26,12 @@ lazy_static! {
 /// Create basic doctags query
 ///
 /// Search term example: `:file_type:file html png`
-pub fn doctags_query(index: &Index, text: &String) -> Box<dyn Query> {
+pub fn doctags_query(index: &Index, text: &String) -> Result<Box<dyn Query>> {
     let mut tag_query = Vec::new();
-    let tags_field = index.schema().get_field("tags").unwrap();
+    let tags_field = index
+        .schema()
+        .get_field("tags")
+        .context("Field 'tags' not found")?;
     let mut raw = TAG_REGEX.replace_all(text, |caps: &Captures| {
         let facet = caps[0].replace(":", "/");
         let query: Box<dyn Query> = Box::new(TermQuery::new(
@@ -37,8 +45,8 @@ pub fn doctags_query(index: &Index, text: &String) -> Box<dyn Query> {
     if raw.trim().is_empty() {
         raw = std::borrow::Cow::Borrowed("*"); // match all
     }
-    let path_query = raw_query(index, &raw);
-    if tag_query.is_empty() {
+    let path_query = raw_query(index, &raw)?;
+    let query = if tag_query.is_empty() {
         path_query
     } else {
         let query_vec: Vec<(Occur, Box<dyn Query>)> = vec![path_query]
@@ -47,22 +55,26 @@ pub fn doctags_query(index: &Index, text: &String) -> Box<dyn Query> {
             .map(|q| (Occur::Must, q.box_clone()))
             .collect();
         Box::new(BooleanQuery::from(query_vec))
-    }
+    };
+    Ok(query)
 }
 
-pub fn search(index: &Index, text: String, limit: usize) -> tantivy::Result<()> {
+pub fn search(index: &Index, text: String, limit: usize) -> Result<()> {
     let limit = if limit == 0 { 100_000 } else { limit };
     let exclude_count = true;
     let exclude_docs = false;
 
-    let reader = index.reader()?;
+    let reader = index.reader().compat()?;
 
     let searcher = reader.searcher();
 
     let schema = index.schema();
-    let path_field = index.schema().get_field("path").unwrap();
+    let path_field = index
+        .schema()
+        .get_field("path")
+        .context("Field 'path' not found")?;
 
-    let query = doctags_query(&index, &text);
+    let query = doctags_query(&index, &text)?;
 
     let mut multi_collector = MultiCollector::new();
     let count_handle = if exclude_count {
@@ -77,7 +89,7 @@ pub fn search(index: &Index, text: String, limit: usize) -> tantivy::Result<()> 
     };
 
     // search index
-    let mut multi_fruit = searcher.search(&query, &multi_collector).unwrap();
+    let mut multi_fruit = searcher.search(&query, &multi_collector).compat()?;
 
     // count
     if let Some(ch) = count_handle {
@@ -89,41 +101,53 @@ pub fn search(index: &Index, text: String, limit: usize) -> tantivy::Result<()> 
     if let Some(tdh) = top_docs_handle {
         let top_docs = tdh.extract(&mut multi_fruit);
         for (score, doc_address) in top_docs {
-            let doc = searcher.doc(doc_address).unwrap();
+            let doc = searcher.doc(doc_address).compat()?;
             // let named_doc = schema.to_named_doc(&doc);
             debug!("score: {} doc: {}", score, schema.to_json(&doc));
-            println!("{}", doc.get_first(path_field).unwrap().text().unwrap());
+            println!(
+                "{}",
+                doc.get_first(path_field)
+                    .context("No 'path' entry in doc")?
+                    .text()
+                    .context("Couldn't convert 'path' entry to text")?
+            );
         }
     }
 
     Ok(())
 }
 
-pub fn doc_from_id(index: &Index, id: u64) -> tantivy::Result<Option<Document>> {
-    let id_field = index.schema().get_field("id").unwrap();
+pub fn doc_from_id(index: &Index, id: u64) -> Result<Option<Document>> {
+    let id_field = index
+        .schema()
+        .get_field("id")
+        .context("Field 'id' not found")?;
     let term = Term::from_field_u64(id_field, id);
     let term_query = TermQuery::new(term, IndexRecordOption::Basic);
     search_single_doc(index, &term_query)
 }
 
-fn search_single_doc(index: &Index, query: &TermQuery) -> tantivy::Result<Option<Document>> {
-    let reader = index.reader()?;
+fn search_single_doc(index: &Index, query: &TermQuery) -> Result<Option<Document>> {
+    let reader = index.reader().compat()?;
     let searcher = reader.searcher();
-    let top_docs = searcher.search(query, &TopDocs::with_limit(1))?;
+    let top_docs = searcher.search(query, &TopDocs::with_limit(1)).compat()?;
     if let Some((_score, doc_address)) = top_docs.first() {
-        let doc = searcher.doc(*doc_address)?;
+        let doc = searcher.doc(*doc_address).compat()?;
         Ok(Some(doc))
     } else {
         Ok(None)
     }
 }
 
-pub fn doc_from_path(index: &Index, path: &String) -> tantivy::Result<Option<Document>> {
-    let reader = index.reader()?;
+pub fn doc_from_path(index: &Index, path: &String) -> Result<Option<Document>> {
+    let reader = index.reader().compat()?;
 
     let searcher = reader.searcher();
 
-    let path_field = index.schema().get_field("path").unwrap();
+    let path_field = index
+        .schema()
+        .get_field("path")
+        .context("Field 'path' not found")?;
 
     let term = Term::from_field_text(path_field, &path);
     let term_query = TermQuery::new(term, IndexRecordOption::Basic);
@@ -132,10 +156,12 @@ pub fn doc_from_path(index: &Index, path: &String) -> tantivy::Result<Option<Doc
     let term_query = query_parser
         .parse_query(&path)
         .unwrap_or(Box::new(term_query));
-    let top_docs = searcher.search(&term_query, &TopDocs::with_limit(1))?;
+    let top_docs = searcher
+        .search(&term_query, &TopDocs::with_limit(1))
+        .compat()?;
 
     if let Some((_score, doc_address)) = top_docs.first() {
-        let doc = searcher.doc(*doc_address)?;
+        let doc = searcher.doc(*doc_address).compat()?;
         Ok(Some(doc))
     } else {
         dbg!("doc_from_path not found", path);
@@ -143,20 +169,23 @@ pub fn doc_from_path(index: &Index, path: &String) -> tantivy::Result<Option<Doc
     }
 }
 
-pub fn stats(index: &Index) -> tantivy::Result<()> {
-    let reader = index.reader()?;
+pub fn stats(index: &Index) -> Result<()> {
+    let reader = index.reader().compat()?;
 
     let searcher = reader.searcher();
 
-    let count = searcher.search(&AllQuery, &Count).unwrap();
+    let count = searcher.search(&AllQuery, &Count).compat()?;
 
     println!("Total documents: {}", &count);
 
-    let tags = index.schema().get_field("tags").unwrap();
+    let tags = index
+        .schema()
+        .get_field("tags")
+        .context("Field 'tags' not found")?;
     let mut facet_collector = FacetCollector::for_field(tags);
     facet_collector.add_facet("/");
 
-    let facet_counts = searcher.search(&AllQuery, &facet_collector).unwrap();
+    let facet_counts = searcher.search(&AllQuery, &facet_collector).compat()?;
     for (facet, count) in facet_counts.get("/") {
         println!("{}: {}", &facet, count);
     }

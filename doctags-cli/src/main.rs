@@ -90,7 +90,7 @@ fn command(cli_args: Cli) -> Result<()> {
             if git {
                 // walk::find_repos(&basedir, out_json);
             } else {
-                walk::find(&vec![basedir], out_json);
+                walk::find(&vec![basedir], out_json)?;
             }
         }
         Cli::Index {
@@ -102,12 +102,12 @@ fn command(cli_args: Cli) -> Result<()> {
             let newcfg = config::docset_config(docset, index, vec![basedir])?;
             info!("Writing configuration to {:?}", config::config_fn());
             let cfg = config.update_docset_config(newcfg)?;
-            index::create_and_write(&cfg.basedirs, &cfg.index);
+            index::create_and_write(&cfg.basedirs, &cfg.index)?;
         }
         Cli::Reindex { docset } => {
             let config = config::load_config()?;
             let cfg = config.docset_config(&docset)?;
-            index::create_and_write(&cfg.basedirs, &cfg.index);
+            index::create_and_write(&cfg.basedirs, &cfg.index)?;
         }
         Cli::Tag {
             path,
@@ -121,16 +121,16 @@ fn command(cli_args: Cli) -> Result<()> {
         } => {
             let config = config::load_config()?;
             let cfg = config.docset_config(&docset)?;
-            let index = index::open(&cfg.index).unwrap();
-            search::search(&index, text, limit).unwrap();
+            let index = index::open(&cfg.index)?;
+            search::search(&index, text, limit)?;
         }
         Cli::Stats {} => {
             println!("Configuration {:?}", config::config_fn());
             let config = config::load_config()?;
             for cfg in config.docsets.iter().rev() {
                 println!("Docset '{}':", cfg.name);
-                let index = index::open(&cfg.index).unwrap();
-                search::stats(&index).unwrap();
+                let index = index::open(&cfg.index)?;
+                search::stats(&index)?;
             }
         }
     }
