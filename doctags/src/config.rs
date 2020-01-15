@@ -78,20 +78,19 @@ pub fn docset_config(
             dir.to_string_lossy().to_string()
         })?
     });
-    let basedirs = basedirs
+    let basedirs: Result<Vec<String>> = basedirs
         .iter()
         .map(|dir| {
             Path::new(&dir)
                 .canonicalize()
-                .unwrap() // TODO
-                .to_string_lossy()
-                .to_string()
+                .context("canonicalize failed")
+                .map(|d| d.to_string_lossy().to_string())
         })
         .collect();
     Ok(DocsetConfig {
         name,
         index: index_dir,
-        basedirs,
+        basedirs: basedirs?,
     })
 }
 
