@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate log;
 
+mod ui;
+
 use ::doctags::{config, doctags, index, search, walk};
 use anyhow::Result;
 use std::io::Write;
@@ -57,6 +59,12 @@ enum Cli {
         docset: String,
         /// Search text
         text: String,
+    },
+    /// Start interactive search Ui
+    Ui {
+        /// Docset name
+        #[structopt(short = "n", long, name = "name", default_value = "default")]
+        docset: String,
     },
     /// Get statistics
     Stats {},
@@ -123,6 +131,12 @@ fn command(cli_args: Cli) -> Result<()> {
             let cfg = config.docset_config(&docset)?;
             let index = index::open(&cfg.index)?;
             search::search(&index, text, limit)?;
+        }
+        Cli::Ui { docset } => {
+            let config = config::load_config()?;
+            let cfg = config.docset_config(&docset)?;
+            let index = index::open(&cfg.index)?;
+            ui::ui(&index)?;
         }
         Cli::Stats {} => {
             println!("Configuration {:?}", config::config_fn());

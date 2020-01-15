@@ -10,7 +10,11 @@ name = "doctags"
 
 [dependencies]
 doctags = { path = "../doctags" }
+tantivy = "0.11"
+failure = "0.1" # Required for converting tantivy errors
 log = "0.4"
 env_logger = "0.7"
 anyhow = "1.0"
 structopt = { version = "0.3", default-features = false }
+crossterm = "0.10"
+ansi_term = "0.11"

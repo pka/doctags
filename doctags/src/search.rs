@@ -42,7 +42,7 @@ pub fn doctags_query(index: &Index, text: &String) -> Result<Box<dyn Query>> {
         // Remove from raw query string
         ""
     });
-    if raw.trim().is_empty() {
+    if raw.trim().is_empty() || raw == ":" {
         raw = std::borrow::Cow::Borrowed("*"); // match all
     }
     let path_query = raw_query(index, &raw)?;
