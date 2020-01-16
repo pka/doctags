@@ -18,6 +18,10 @@ Installation
 
     cargo install -f --path doctagsfs
 
+Add .doctags.toml to your global git ignore file:
+
+    echo .doctags.toml >> ~/.gitignore
+
 Usage
 -----
 
