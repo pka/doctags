@@ -154,7 +154,13 @@ fn command(cli_args: Cli) -> Result<()> {
 fn main() {
     setup_logger();
     match command(Cli::from_args()) {
-        Err(e) => error!("{}", e),
+        Err(e) => {
+            if let Some(source) = e.source() {
+                error!("{} ({})", e, source);
+            } else {
+                error!("{}", e);
+            }
+        }
         Ok(_) => (),
     }
 }
