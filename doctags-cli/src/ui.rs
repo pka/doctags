@@ -28,9 +28,11 @@ pub fn ui(index: &Index) -> Result<()> {
         let (_cols, rows) = terminal().terminal_size();
 
         while state == State::Selecting {
-            let results = search(index, &searchinput, (rows - 1) as usize)?;
-            if results.len() > 0 {
-                lines = results;
+            if let Ok(results) = search(index, &searchinput, (rows - 1) as usize) {
+                // Ignore empty results or search errors (e.g. incomplete ':' expression)
+                if results.len() > 0 {
+                    lines = results;
+                }
             }
             paint_selection_list(&lines, selected);
             if let Some(ev) = sync_stdin.next() {
