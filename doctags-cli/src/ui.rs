@@ -1,11 +1,8 @@
 use ansi_term::{ANSIString, ANSIStrings, Colour, Style};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use crossterm::{cursor, terminal, ClearType, InputEvent, KeyEvent, RawScreen};
 use doctags::{search, Index};
-use failure::ResultExt;
 use std::io::Write;
-use tantivy::collector::TopDocs;
-use tantivy::{schema::Field, DocAddress, Searcher, Snippet, SnippetGenerator};
 
 pub fn ui(index: &Index) -> Result<()> {
     #[derive(PartialEq)]
@@ -28,7 +25,7 @@ pub fn ui(index: &Index) -> Result<()> {
         let (_cols, rows) = terminal().terminal_size();
 
         while state == State::Selecting {
-            if let Ok(results) = search(index, &searchinput, (rows - 1) as usize) {
+            if let Ok(results) = search::search_matches(index, &searchinput, (rows - 1) as usize) {
                 // Ignore empty results or search errors (e.g. incomplete ':' expression)
                 if results.len() > 0 {
                     lines = results;
@@ -89,55 +86,7 @@ pub fn ui(index: &Index) -> Result<()> {
     Ok(())
 }
 
-struct Line {
-    text: String,
-    matches: Snippet,
-}
-
-fn search(index: &Index, input: &String, max_results: usize) -> Result<Vec<Line>> {
-    let path_field = index
-        .schema()
-        .get_field("path")
-        .context("Field 'path' not found")?;
-
-    let reader = index.reader().compat()?;
-    let searcher = reader.searcher();
-    let query = search::doctags_query(&index, &input)?;
-
-    let top_docs = searcher
-        .search(&query, &TopDocs::with_limit(max_results))
-        .compat()?;
-
-    let snippet_generator = SnippetGenerator::create(&searcher, &query, path_field).compat()?;
-
-    let lines: Result<Vec<Line>> = top_docs
-        .iter()
-        .map(|(_score, doc_address)| {
-            formatted_field(&searcher, doc_address, &snippet_generator, &path_field)
-        })
-        .collect();
-
-    lines
-}
-
-fn formatted_field(
-    searcher: &Searcher,
-    doc_address: &DocAddress,
-    snippet_generator: &SnippetGenerator,
-    path_field: &Field,
-) -> Result<Line> {
-    let doc = searcher.doc(*doc_address).compat()?;
-    let text = doc
-        .get_first(*path_field)
-        .context("No 'path' entry in doc")?
-        .text()
-        .context("Couldn't convert 'path' entry to text")?
-        .to_string();
-    let matches = snippet_generator.snippet_from_doc(&doc);
-    Ok(Line { text, matches })
-}
-
-fn paint_selection_list(lines: &Vec<Line>, selected: usize) {
+fn paint_selection_list(lines: &Vec<search::Match>, selected: usize) {
     let terminal = terminal();
     let size = terminal.terminal_size();
     let width = size.0 as usize;
@@ -164,9 +113,9 @@ fn paint_selection_list(lines: &Vec<Line>, selected: usize) {
     let _ = terminal.clear(ClearType::FromCursorDown);
 }
 
-fn highlight(line: &Line, normal: Style, highlighted: Style) -> Vec<ANSIString> {
+fn highlight(line: &search::Match, normal: Style, highlighted: Style) -> Vec<ANSIString> {
     let mut ansi_strings = vec![];
-    let snippet = &line.matches;
+    let snippet = &line.snippet;
     let parts = snippet.highlighted();
     if parts.len() == 0 {
         ansi_strings.push(normal.paint(&line.text));

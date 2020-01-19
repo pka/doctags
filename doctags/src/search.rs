@@ -3,8 +3,8 @@ use failure::ResultExt;
 use regex::{Captures, Regex};
 use tantivy::collector::{Count, FacetCollector, MultiCollector, TopDocs};
 use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery};
-use tantivy::schema::{Facet, IndexRecordOption};
-use tantivy::{self, Document, Index, Term};
+use tantivy::schema::{Facet, Field, IndexRecordOption};
+use tantivy::{self, DocAddress, Document, Index, Searcher, Snippet, SnippetGenerator, Term};
 
 /// Create query with [Tantivy Query parser](https://docs.rs/tantivy/0.11.3/tantivy/query/struct.QueryParser.html)
 ///
@@ -115,6 +115,54 @@ pub fn search(index: &Index, text: String, limit: usize) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub struct Match {
+    pub text: String,
+    pub snippet: Snippet,
+}
+
+pub fn search_matches(index: &Index, input: &String, max_results: usize) -> Result<Vec<Match>> {
+    let path_field = index
+        .schema()
+        .get_field("path")
+        .context("Field 'path' not found")?;
+
+    let reader = index.reader().compat()?;
+    let searcher = reader.searcher();
+    let query = doctags_query(&index, &input)?;
+
+    let top_docs = searcher
+        .search(&query, &TopDocs::with_limit(max_results))
+        .compat()?;
+
+    let snippet_generator = SnippetGenerator::create(&searcher, &query, path_field).compat()?;
+
+    let lines: Result<Vec<Match>> = top_docs
+        .iter()
+        .map(|(_score, doc_address)| {
+            formatted_match(&searcher, doc_address, &snippet_generator, &path_field)
+        })
+        .collect();
+
+    lines
+}
+
+fn formatted_match(
+    searcher: &Searcher,
+    doc_address: &DocAddress,
+    snippet_generator: &SnippetGenerator,
+    path_field: &Field,
+) -> Result<Match> {
+    let doc = searcher.doc(*doc_address).compat()?;
+    let text = doc
+        .get_first(*path_field)
+        .context("No 'path' entry in doc")?
+        .text()
+        .context("Couldn't convert 'path' entry to text")?
+        .to_string();
+    let snippet = snippet_generator.snippet_from_doc(&doc);
+    Ok(Match { text, snippet })
 }
 
 pub fn doc_from_id(index: &Index, id: u64) -> Result<Option<Document>> {
