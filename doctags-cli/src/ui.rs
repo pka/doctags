@@ -1,10 +1,24 @@
 use ansi_term::{ANSIString, ANSIStrings, Colour, Style};
-use anyhow::Result;
-use crossterm::{cursor, terminal, ClearType, InputEvent, KeyEvent, RawScreen};
+use anyhow::{Context, Result};
+pub use crossterm::{
+    cursor,
+    event::{self, Event, KeyCode, KeyEvent},
+    execute, queue, style,
+    terminal::{self, ClearType},
+    Command,
+};
 use doctags::{search, Index};
-use std::io::Write;
+use std::io::{self, Write};
 
 pub fn ui(index: &Index) -> Result<()> {
+    let mut stderr = io::stdout();
+    run(&mut stderr, index).with_context(|| format!("crossterm result"))
+}
+
+fn run<W>(w: &mut W, index: &Index) -> crossterm::Result<()>
+where
+    W: Write,
+{
     #[derive(PartialEq)]
     enum State {
         Selecting,
@@ -13,69 +27,79 @@ pub fn ui(index: &Index) -> Result<()> {
     }
     let mut state = State::Selecting;
     let mut lines = Vec::new();
-    if let Ok(_raw) = RawScreen::into_raw_mode() {
-        // User input for search
-        let mut searchinput = String::new();
-        let mut selected = 0;
 
-        let mut cursor = cursor();
-        let _ = cursor.hide();
-        let input = crossterm::input();
-        let mut sync_stdin = input.read_sync();
-        let (_cols, rows) = terminal().terminal_size();
+    execute!(w, terminal::EnterAlternateScreen)?;
 
-        while state == State::Selecting {
-            if let Ok(results) = search::search_matches(index, &searchinput, (rows - 1) as usize) {
-                // Ignore empty results or search errors (e.g. incomplete ':' expression)
-                if results.len() > 0 {
-                    lines = results;
-                }
+    terminal::enable_raw_mode()?;
+
+    // User input for search
+    let mut searchinput = String::new();
+    let mut selected = 0;
+
+    let (_cols, rows) = terminal::size()?;
+    queue!(
+        w,
+        style::ResetColor,
+        terminal::Clear(ClearType::All),
+        cursor::Hide,
+        cursor::MoveTo(1, 1)
+    )?;
+    w.flush()?;
+
+    while state == State::Selecting {
+        if let Ok(results) = search::search_matches(index, &searchinput, (rows - 1) as usize) {
+            // Ignore empty results or search errors (e.g. incomplete ':' expression)
+            if results.len() > 0 {
+                lines = results;
             }
-            paint_selection_list(&lines, selected);
-            if let Some(ev) = sync_stdin.next() {
-                match ev {
-                    InputEvent::Keyboard(k) => match k {
-                        KeyEvent::Esc | KeyEvent::Ctrl('c') => {
-                            state = State::Quit;
-                        }
-                        KeyEvent::Up => {
-                            if selected > 0 {
-                                selected -= 1;
-                            }
-                        }
-                        KeyEvent::Down => {
-                            if selected + 1 < lines.len() {
-                                selected += 1;
-                            }
-                        }
-                        KeyEvent::Char('\n') => {
-                            state = State::Selected(lines[selected].text.clone());
-                        }
-                        KeyEvent::Char(ch) => {
-                            searchinput.push(ch);
-                            selected = 0;
-                        }
-                        KeyEvent::Backspace => {
-                            searchinput.pop();
-                            selected = 0;
-                        }
-                        _ => {
-                            // println!("{}", format!("OTHER InputEvent: {:?}\n\n", k));
-                        }
-                    },
-                    _ => {}
-                }
-            }
-            cursor.move_up(lines.len() as u16);
         }
-        let (_x, y) = cursor.pos();
-        cursor.goto(0, y)?;
-        let _ = cursor.show();
-
-        RawScreen::disable_raw_mode()?;
+        paint_selection_list(&lines, selected)?;
+        if let Event::Key(KeyEvent { code, .. }) = event::read()? {
+            match code {
+                KeyCode::Esc => {
+                    // | KeyCode::Ctrl('c')
+                    state = State::Quit;
+                }
+                KeyCode::Up => {
+                    if selected > 0 {
+                        selected -= 1;
+                    }
+                }
+                KeyCode::Down => {
+                    if selected + 1 < lines.len() {
+                        selected += 1;
+                    }
+                }
+                KeyCode::Enter => {
+                    state = State::Selected(lines[selected].text.clone());
+                }
+                KeyCode::Char(ch) => {
+                    searchinput.push(ch);
+                    selected = 0;
+                }
+                KeyCode::Backspace => {
+                    searchinput.pop();
+                    selected = 0;
+                }
+                _ => {
+                    // println!("{}", format!("OTHER InputEvent: {:?}\n\n", code));
+                }
+            }
+        }
+        //         cursor.move_up(lines.len() as u16);
     }
-    let terminal = terminal();
-    let _ = terminal.clear(ClearType::FromCursorDown);
+    //     let (_x, y) = cursor.pos();
+    //     cursor.goto(0, y)?;
+    //     let _ = cursor.show();
+
+    // let _ = terminal.clear(ClearType::FromCursorDown);
+
+    execute!(
+        w,
+        style::ResetColor,
+        cursor::Show,
+        terminal::LeaveAlternateScreen
+    )?;
 
     match state {
         State::Selected(line) => {
@@ -83,17 +107,18 @@ pub fn ui(index: &Index) -> Result<()> {
         }
         _ => {}
     }
-    Ok(())
+
+    terminal::disable_raw_mode()
 }
 
-fn paint_selection_list(lines: &Vec<search::Match>, selected: usize) {
-    let terminal = terminal();
-    let size = terminal.terminal_size();
+fn paint_selection_list(lines: &Vec<search::Match>, selected: usize) -> crossterm::Result<()> {
+    let mut w = io::stdout();
+    let size = terminal::size()?;
     let width = size.0 as usize;
-    let cursor = cursor();
-    let (_x, y) = cursor.pos();
+    let (_x, y) = cursor::position()?;
     for (i, line) in lines.iter().enumerate() {
-        let _ = cursor.goto(0, y + (i as u16));
+        queue!(w, cursor::MoveTo(0, y + (i as u16)))?;
+        w.flush()?;
         let (style, highlighted) = if selected == i {
             (Colour::White.normal(), Colour::Cyan.normal())
         } else {
@@ -105,12 +130,12 @@ fn paint_selection_list(lines: &Vec<search::Match>, selected: usize) {
         }
         println!("{}", ANSIStrings(&ansi_strings));
     }
-    let _ = cursor.goto(0, y + (lines.len() as u16));
+    queue!(w, cursor::MoveTo(0, y + (lines.len() as u16)))?;
     print!("{}", Colour::Blue.paint("[ESC to quit, Enter to select]"));
-
-    let _ = std::io::stdout().flush();
-    // Clear additional lines from previous selection
-    let _ = terminal.clear(ClearType::FromCursorDown);
+    w.flush()?;
+    // // Clear additional lines from previous selection
+    // let _ = terminal.clear(ClearType::FromCursorDown);
+    Ok(())
 }
 
 fn highlight(line: &search::Match, normal: Style, highlighted: Style) -> Vec<ANSIString> {
