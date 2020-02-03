@@ -5,7 +5,7 @@ pub use crossterm::{
     execute, queue,
     style::{
         self, style, Attribute, Color, Colorize, ContentStyle, Print, PrintStyledContent,
-        ResetColor, SetAttribute, SetForegroundColor, StyledContent,
+        ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor, StyledContent,
     },
     terminal::{self, ClearType},
     Command,
@@ -44,19 +44,47 @@ where
         w,
         style::ResetColor,
         terminal::Clear(ClearType::All),
-        cursor::Hide,
-        cursor::MoveTo(1, 1)
+        cursor::Hide
     )?;
+    let menu_normal = Color::AnsiValue(252);
+    let menu_command = Color::AnsiValue(220);
+    let menu_background = Color::AnsiValue(235);
+    queue!(
+        w,
+        cursor::MoveTo(0, 0),
+        SetBackgroundColor(menu_background),
+        SetForegroundColor(menu_command),
+        Print("ESC"),
+        SetForegroundColor(menu_normal),
+        Print(": quit | "),
+        SetForegroundColor(menu_command),
+        Print("Enter"),
+        SetForegroundColor(menu_normal),
+        Print(": select"),
+        terminal::Clear(ClearType::UntilNewLine)
+    )?;
+
+    queue!(w, cursor::MoveTo(0, 1), style::ResetColor, Print("> "))?;
+
     w.flush()?;
 
     while state == State::Selecting {
-        if let Ok(results) = search::search_matches(index, &searchinput, (rows - 1) as usize) {
+        if let Ok(results) = search::search_matches(index, &searchinput, (rows - 2) as usize) {
             // Ignore empty results or search errors (e.g. incomplete ':' expression)
             if results.len() > 0 {
                 lines = results;
             }
         }
         print_selection_list(&lines, selected)?;
+        queue!(
+            w,
+            cursor::MoveTo(2, 1),
+            style::ResetColor,
+            terminal::Clear(ClearType::UntilNewLine),
+            Print(&searchinput),
+            cursor::Show
+        )?;
+        w.flush()?;
         if let Event::Key(KeyEvent { code, modifiers }) = event::read()? {
             match code {
                 KeyCode::Esc => {
@@ -92,13 +120,7 @@ where
                 }
             }
         }
-        //         cursor.move_up(lines.len() as u16);
     }
-    //     let (_x, y) = cursor.pos();
-    //     cursor.goto(0, y)?;
-    //     let _ = cursor.show();
-
-    // let _ = terminal.clear(ClearType::FromCursorDown);
 
     execute!(
         w,
@@ -119,25 +141,17 @@ where
 
 fn print_selection_list(lines: &Vec<search::Match>, selected: usize) -> crossterm::Result<()> {
     let mut w = io::stdout();
-    let size = terminal::size()?;
-    let width = size.0 as usize;
-    // let (_x, y) = cursor::position()?;
-    let y = 0;
+    let top = 2;
     for (i, line) in lines.iter().enumerate() {
-        queue!(w, cursor::MoveTo(0, y + (i as u16)))?;
+        queue!(w, cursor::MoveTo(0, top + (i as u16)))?;
         print_line(&line, selected == i)?;
-        for _ in line.text.len()..width {
-            queue!(w, Print(" "))?;
-        }
     }
-    queue!(w, cursor::MoveTo(0, y + (lines.len() as u16)))?;
     queue!(
         w,
-        PrintStyledContent("[ESC to quit, Enter to select]".blue()),
+        cursor::MoveTo(0, top + (lines.len() as u16)),
         // Clear additional lines from previous selection
         terminal::Clear(ClearType::FromCursorDown)
     )?;
-    w.flush()?;
     Ok(())
 }
 
@@ -171,6 +185,7 @@ fn print_line(line: &search::Match, line_selected: bool) -> crossterm::Result<()
             w,
             SetForegroundColor(line_color),
             Print(&snippet.fragments()[start_from..]),
+            terminal::Clear(ClearType::UntilNewLine)
         )?;
     }
     Ok(())
