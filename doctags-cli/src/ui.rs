@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 pub use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
@@ -15,13 +15,10 @@ use std::io::{self, Write};
 
 pub fn ui(index: &Index) -> Result<()> {
     let mut stderr = io::stdout();
-    run(&mut stderr, index).with_context(|| format!("crossterm result"))
+    run(&mut stderr, index)
 }
 
-fn run<W>(w: &mut W, index: &Index) -> crossterm::Result<()>
-where
-    W: Write,
-{
+fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
     #[derive(PartialEq)]
     enum State {
         Selecting,
@@ -136,10 +133,11 @@ where
         _ => {}
     }
 
-    terminal::disable_raw_mode()
+    terminal::disable_raw_mode()?;
+    Ok(())
 }
 
-fn print_selection_list(lines: &Vec<search::Match>, selected: usize) -> crossterm::Result<()> {
+fn print_selection_list(lines: &Vec<search::Match>, selected: usize) -> Result<()> {
     let mut w = io::stdout();
     let top = 2;
     for (i, line) in lines.iter().enumerate() {
@@ -155,7 +153,7 @@ fn print_selection_list(lines: &Vec<search::Match>, selected: usize) -> crosster
     Ok(())
 }
 
-fn print_line(line: &search::Match, line_selected: bool) -> crossterm::Result<()> {
+fn print_line(line: &search::Match, line_selected: bool) -> Result<()> {
     let mut w = io::stdout();
     let line_color = if line_selected {
         Color::White
