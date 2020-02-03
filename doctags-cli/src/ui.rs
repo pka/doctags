@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 pub use crossterm::{
     cursor,
-    event::{self, Event, KeyCode, KeyEvent},
+    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute, queue,
     style::{
         self, style, Attribute, Color, Colorize, ContentStyle, Print, PrintStyledContent,
@@ -57,10 +57,13 @@ where
             }
         }
         print_selection_list(&lines, selected)?;
-        if let Event::Key(KeyEvent { code, .. }) = event::read()? {
+        if let Event::Key(KeyEvent { code, modifiers }) = event::read()? {
             match code {
                 KeyCode::Esc => {
-                    // | KeyCode::Ctrl('c')
+                    state = State::Quit;
+                }
+                // Ctrl-c
+                KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => {
                     state = State::Quit;
                 }
                 KeyCode::Up => {
@@ -76,7 +79,7 @@ where
                 KeyCode::Enter => {
                     state = State::Selected(lines[selected].text.clone());
                 }
-                KeyCode::Char(ch) => {
+                KeyCode::Char(ch) if modifiers.is_empty() || modifiers == KeyModifiers::SHIFT => {
                     searchinput.push(ch);
                     selected = 0;
                 }
