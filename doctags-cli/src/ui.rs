@@ -1,9 +1,12 @@
-use ansi_term::{ANSIString, ANSIStrings, Colour, Style};
 use anyhow::{Context, Result};
 pub use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEvent},
-    execute, queue, style,
+    execute, queue,
+    style::{
+        self, style, Attribute, Color, Colorize, ContentStyle, Print, PrintStyledContent,
+        ResetColor, SetAttribute, SetForegroundColor, StyledContent,
+    },
     terminal::{self, ClearType},
     Command,
 };
@@ -53,7 +56,7 @@ where
                 lines = results;
             }
         }
-        paint_selection_list(&lines, selected)?;
+        print_selection_list(&lines, selected)?;
         if let Event::Key(KeyEvent { code, .. }) = event::read()? {
             match code {
                 KeyCode::Esc => {
@@ -111,47 +114,61 @@ where
     terminal::disable_raw_mode()
 }
 
-fn paint_selection_list(lines: &Vec<search::Match>, selected: usize) -> crossterm::Result<()> {
+fn print_selection_list(lines: &Vec<search::Match>, selected: usize) -> crossterm::Result<()> {
     let mut w = io::stdout();
     let size = terminal::size()?;
     let width = size.0 as usize;
-    let (_x, y) = cursor::position()?;
+    // let (_x, y) = cursor::position()?;
+    let y = 0;
     for (i, line) in lines.iter().enumerate() {
         queue!(w, cursor::MoveTo(0, y + (i as u16)))?;
-        w.flush()?;
-        let (style, highlighted) = if selected == i {
-            (Colour::White.normal(), Colour::Cyan.normal())
-        } else {
-            (Colour::White.dimmed(), Colour::Cyan.normal())
-        };
-        let mut ansi_strings = highlight(&line, style, highlighted);
+        print_line(&line, selected == i)?;
         for _ in line.text.len()..width {
-            ansi_strings.push(style.paint(' '.to_string()));
+            queue!(w, Print(" "))?;
         }
-        println!("{}", ANSIStrings(&ansi_strings));
     }
     queue!(w, cursor::MoveTo(0, y + (lines.len() as u16)))?;
-    print!("{}", Colour::Blue.paint("[ESC to quit, Enter to select]"));
+    queue!(
+        w,
+        PrintStyledContent("[ESC to quit, Enter to select]".blue()),
+        // Clear additional lines from previous selection
+        terminal::Clear(ClearType::FromCursorDown)
+    )?;
     w.flush()?;
-    // // Clear additional lines from previous selection
-    // let _ = terminal.clear(ClearType::FromCursorDown);
     Ok(())
 }
 
-fn highlight(line: &search::Match, normal: Style, highlighted: Style) -> Vec<ANSIString> {
-    let mut ansi_strings = vec![];
+fn print_line(line: &search::Match, line_selected: bool) -> crossterm::Result<()> {
+    let mut w = io::stdout();
+    let line_color = if line_selected {
+        Color::White
+    } else {
+        Color::Grey
+    };
+    let highlight_color = Color::Cyan;
     let snippet = &line.snippet;
     let parts = snippet.highlighted();
     if parts.len() == 0 {
-        ansi_strings.push(normal.paint(&line.text));
+        queue!(w, SetForegroundColor(line_color), Print(&line.text),)?;
     } else {
         let mut start_from = 0;
         for (start, end) in parts.iter().map(|h| h.bounds()) {
-            ansi_strings.push(normal.paint(&snippet.fragments()[start_from..start]));
-            ansi_strings.push(highlighted.paint(&snippet.fragments()[start..end]));
+            queue!(
+                w,
+                // Normal
+                SetForegroundColor(line_color),
+                Print(&snippet.fragments()[start_from..start]),
+                // Highlighted
+                SetForegroundColor(highlight_color),
+                Print(&snippet.fragments()[start..end])
+            )?;
             start_from = end;
         }
-        ansi_strings.push(normal.paint(&snippet.fragments()[start_from..]));
+        queue!(
+            w,
+            SetForegroundColor(line_color),
+            Print(&snippet.fragments()[start_from..]),
+        )?;
     }
-    ansi_strings
+    Ok(())
 }

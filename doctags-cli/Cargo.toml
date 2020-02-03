@@ -17,4 +17,3 @@ env_logger = "0.7"
 anyhow = "1.0"
 structopt = { version = "0.3", default-features = false }
 crossterm = "0.15"
-ansi_term = "0.11"

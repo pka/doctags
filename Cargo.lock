@@ -10,15 +10,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ansi_term"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee49baf6cb617b853aa8d93bf420db2383fab46d314482ca2803b40d5fde979b"
-dependencies = [
- "winapi 0.3.8",
-]
-
-[[package]]
 name = "anyhow"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -370,7 +361,6 @@ dependencies = [
 name = "doctags-cli"
 version = "0.1.0"
 dependencies = [
- "ansi_term",
  "anyhow",
  "crossterm",
  "doctags",
