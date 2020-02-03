@@ -14,8 +14,7 @@ use doctags::{search, Index};
 use std::io::{self, Write};
 
 pub fn ui(index: &Index) -> Result<()> {
-    let mut stderr = io::stdout();
-    run(&mut stderr, index)
+    run(&mut io::stderr(), index)
 }
 
 fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
@@ -25,18 +24,11 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
         Quit,
         Selected(String),
     }
-    let mut state = State::Selecting;
-    let mut lines = Vec::new();
 
     execute!(w, terminal::EnterAlternateScreen)?;
 
     terminal::enable_raw_mode()?;
 
-    // User input for search
-    let mut searchinput = String::new();
-    let mut selected = 0;
-
-    let (_cols, rows) = terminal::size()?;
     queue!(
         w,
         style::ResetColor,
@@ -65,6 +57,15 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
 
     w.flush()?;
 
+    let mut state = State::Selecting;
+    let mut lines = Vec::new();
+
+    // User input for search
+    let mut searchinput = String::new();
+    let mut selected = 0;
+
+    let (_cols, rows) = terminal::size()?;
+
     while state == State::Selecting {
         if let Ok(results) = search::search_matches(index, &searchinput, (rows - 2) as usize) {
             // Ignore empty results or search errors (e.g. incomplete ':' expression)
@@ -72,7 +73,7 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
                 lines = results;
             }
         }
-        print_selection_list(&lines, selected)?;
+        print_selection_list(w, &lines, selected)?;
         queue!(
             w,
             cursor::MoveTo(2, 1),
@@ -137,12 +138,15 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
     Ok(())
 }
 
-fn print_selection_list(lines: &Vec<search::Match>, selected: usize) -> Result<()> {
-    let mut w = io::stdout();
+fn print_selection_list<W: Write>(
+    w: &mut W,
+    lines: &Vec<search::Match>,
+    selected: usize,
+) -> Result<()> {
     let top = 2;
     for (i, line) in lines.iter().enumerate() {
         queue!(w, cursor::MoveTo(0, top + (i as u16)))?;
-        print_line(&line, selected == i)?;
+        print_line(w, &line, selected == i)?;
     }
     queue!(
         w,
@@ -153,8 +157,7 @@ fn print_selection_list(lines: &Vec<search::Match>, selected: usize) -> Result<(
     Ok(())
 }
 
-fn print_line(line: &search::Match, line_selected: bool) -> Result<()> {
-    let mut w = io::stdout();
+fn print_line<W: Write>(w: &mut W, line: &search::Match, line_selected: bool) -> Result<()> {
     let line_color = if line_selected {
         Color::White
     } else {
