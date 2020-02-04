@@ -36,30 +36,15 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
         style::ResetColor,
         cursor::Hide
     )?;
-    let menu_normal = Color::AnsiValue(252);
-    let menu_command = Color::AnsiValue(220);
-    let menu_background = Color::AnsiValue(235);
-    queue!(
-        w,
-        cursor::MoveTo(0, 0),
-        SetBackgroundColor(menu_background),
-        SetForegroundColor(menu_command),
-        Print("ESC"),
-        SetForegroundColor(menu_normal),
-        Print(": quit | "),
-        SetForegroundColor(menu_command),
-        Print("Enter"),
-        SetForegroundColor(menu_normal),
-        Print(": select"),
-        terminal::Clear(ClearType::UntilNewLine)
-    )?;
+
+    print_menu(w)?;
 
     queue!(
         w,
         cursor::MoveTo(0, 1),
         style::ResetColor,
         SetBackgroundColor(Color::Black),
-        Print("> ")
+        Print("Search: ")
     )?;
 
     w.flush()?;
@@ -84,7 +69,7 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
         print_selection_list(w, &lines, selected)?;
         queue!(
             w,
-            cursor::MoveTo(2, 1),
+            cursor::MoveTo(8, 1),
             style::ResetColor,
             SetBackgroundColor(Color::Black),
             terminal::Clear(ClearType::UntilNewLine),
@@ -144,6 +129,29 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
     }
 
     terminal::disable_raw_mode()?;
+    Ok(())
+}
+
+fn print_menu<W: Write>(w: &mut W) -> Result<()> {
+    let entries = [("ESC", "quit"), ("Enter", "select")];
+    let menu_normal = Color::AnsiValue(252);
+    let menu_command = Color::AnsiValue(220);
+    let menu_background = Color::AnsiValue(235);
+    queue!(w, cursor::MoveTo(0, 0), SetBackgroundColor(menu_background))?;
+    for (i, (cmd, desc)) in entries.iter().enumerate() {
+        queue!(
+            w,
+            SetForegroundColor(menu_command),
+            Print(cmd),
+            SetForegroundColor(menu_normal),
+            Print(": "),
+            Print(desc),
+        )?;
+        if i < entries.len() - 1 {
+            queue!(w, Print(" | "),)?;
+        }
+    }
+    queue!(w, terminal::Clear(ClearType::UntilNewLine))?;
     Ok(())
 }
 
