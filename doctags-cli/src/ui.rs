@@ -31,8 +31,9 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
 
     queue!(
         w,
-        style::ResetColor,
+        SetBackgroundColor(Color::Black),
         terminal::Clear(ClearType::All),
+        style::ResetColor,
         cursor::Hide
     )?;
     let menu_normal = Color::AnsiValue(252);
@@ -53,7 +54,13 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
         terminal::Clear(ClearType::UntilNewLine)
     )?;
 
-    queue!(w, cursor::MoveTo(0, 1), style::ResetColor, Print("> "))?;
+    queue!(
+        w,
+        cursor::MoveTo(0, 1),
+        style::ResetColor,
+        SetBackgroundColor(Color::Black),
+        Print("> ")
+    )?;
 
     w.flush()?;
 
@@ -73,11 +80,13 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
                 lines = results;
             }
         }
+        queue!(w, SetBackgroundColor(Color::Black))?;
         print_selection_list(w, &lines, selected)?;
         queue!(
             w,
             cursor::MoveTo(2, 1),
             style::ResetColor,
+            SetBackgroundColor(Color::Black),
             terminal::Clear(ClearType::UntilNewLine),
             Print(&searchinput),
             cursor::Show
