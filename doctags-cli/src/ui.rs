@@ -7,6 +7,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use doctags::{search, Index};
+use rustyline::Editor;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
@@ -41,12 +42,7 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
     while state != State::Quit {
         state = match state {
             State::Selecting => select(w, index)?,
-            State::CommandExec(CommandType::Foreach, command, entries) => {
-                foreach(w, command, entries)?
-            }
-            State::CommandExec(CommandType::Eachdir, command, entries) => {
-                eachdir(w, command, entries)?
-            }
+            State::CommandExec(cmdtype, command, entries) => cmdeach(w, cmdtype, command, entries)?,
             State::Selected(line) => {
                 selected_line = Some(line);
                 State::Quit
@@ -177,62 +173,78 @@ fn enter_shell_command<W: Write>(
         cursor::MoveTo(0, 1),
         style::ResetColor,
         SetBackgroundColor(Color::Black),
-        Print("Command: ")
-    )?;
-    w.flush()?;
-    let command = "ls".to_string();
-    Ok(State::CommandExec(cmdtype, command, entries))
-}
-
-fn foreach<W: Write>(w: &mut W, command: String, entries: Vec<String>) -> Result<State> {
-    queue!(
-        w,
-        cursor::MoveTo(0, 2),
-        style::ResetColor,
-        SetBackgroundColor(Color::Black),
-        terminal::Clear(ClearType::FromCursorDown)
     )?;
     w.flush()?;
 
-    terminal::disable_raw_mode()?;
-    for entry in entries {
-        println!("\n{} {}", &command, style(&entry).with(Color::Yellow));
-        if let Err(status) = Command::new(&command).arg(entry).status() {
-            println!("{}", &status);
-        }
-    }
-    terminal::enable_raw_mode()?;
-
-    Ok(State::Keywait(Box::new(State::Selecting)))
-}
-
-fn eachdir<W: Write>(w: &mut W, command: String, entries: Vec<String>) -> Result<State> {
-    queue!(
-        w,
-        cursor::MoveTo(0, 2),
-        style::ResetColor,
-        SetBackgroundColor(Color::Black),
-        terminal::Clear(ClearType::FromCursorDown)
-    )?;
-    w.flush()?;
-
-    terminal::disable_raw_mode()?;
-    for entry in entries {
-        if Path::new(&entry).is_dir() {
-            println!("\ncd {} && {}", style(&entry).with(Color::Yellow), &command);
-            if let Err(status) = Command::new(&command).current_dir(&entry).status() {
-                println!("{}", &status);
+    let mut rl = Editor::<()>::new();
+    let _ok = rl.load_history("/tmp/history.txt");
+    let readline = rl.readline("Command: ");
+    let state = match readline {
+        Ok(line) => {
+            if line.is_empty() {
+                enter_shell_command(w, cmdtype, entries)
+            } else {
+                rl.add_history_entry(line.as_str());
+                Ok(State::CommandExec(cmdtype, line, entries))
             }
-        } else {
-            println!("\nSkipping {}", style(&entry).with(Color::Yellow));
+        }
+        Err(_) => Ok(State::Selecting),
+    };
+    let _ok = rl.save_history("/tmp/history.txt");
+    state
+}
+
+fn cmdeach<W: Write>(
+    w: &mut W,
+    cmdtype: CommandType,
+    command: String,
+    entries: Vec<String>,
+) -> Result<State> {
+    queue!(
+        w,
+        cursor::MoveTo(0, 2),
+        style::ResetColor,
+        SetBackgroundColor(Color::Black),
+        terminal::Clear(ClearType::FromCursorDown)
+    )?;
+    w.flush()?;
+
+    execute!(w, terminal::LeaveAlternateScreen)?;
+    terminal::disable_raw_mode()?;
+
+    let mut args: Vec<&str> = command.split(' ').collect();
+    args.retain(|&arg| !arg.is_empty());
+    let cmd = args.remove(0);
+
+    for entry in entries {
+        match cmdtype {
+            CommandType::Foreach => {
+                println!("\n{} {}", &command, style(&entry).with(Color::Yellow));
+                if let Err(status) = Command::new(cmd).args(&args).arg(entry).status() {
+                    println!("{}", &status);
+                }
+            }
+            CommandType::Eachdir => {
+                if Path::new(&entry).is_dir() {
+                    println!("\ncd {} && {}", style(&entry).with(Color::Yellow), &command);
+                    if let Err(status) = Command::new(cmd).args(&args).current_dir(&entry).status()
+                    {
+                        println!("{}", &status);
+                    }
+                } else {
+                    println!("\nSkipping {}", style(&entry).with(Color::Yellow));
+                }
+            }
         }
     }
-    terminal::enable_raw_mode()?;
 
+    // Reenabling raw_mode and switching back to AlternateScreen in keywait
     Ok(State::Keywait(Box::new(State::Selecting)))
 }
 
-fn keywait<W: Write>(_w: &mut W, next_state: State) -> Result<State> {
+fn keywait<W: Write>(w: &mut W, next_state: State) -> Result<State> {
+    println!("\nPress [Esc] to exit or any other key to return...");
+    terminal::enable_raw_mode()?;
     let mut next = next_state;
     if let Event::Key(KeyEvent { code, modifiers }) = event::read()? {
         next = match code {
@@ -242,6 +254,7 @@ fn keywait<W: Write>(_w: &mut W, next_state: State) -> Result<State> {
             _ => next,
         };
     }
+    execute!(w, terminal::EnterAlternateScreen)?;
     Ok(next)
 }
 
