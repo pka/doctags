@@ -1,17 +1,15 @@
 use anyhow::Result;
-pub use crossterm::{
+use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute, queue,
-    style::{
-        self, style, Attribute, Color, Colorize, ContentStyle, Print, PrintStyledContent,
-        ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor, StyledContent,
-    },
+    style::{self, style, Color, Print, SetBackgroundColor, SetForegroundColor},
     terminal::{self, ClearType},
-    Command,
 };
 use doctags::{search, Index};
 use std::io::{self, Write};
+use std::path::Path;
+use std::process::Command;
 
 #[derive(PartialEq)]
 enum CommandType {
@@ -182,7 +180,7 @@ fn enter_shell_command<W: Write>(
         Print("Command: ")
     )?;
     w.flush()?;
-    let command = "echo".to_string();
+    let command = "ls".to_string();
     Ok(State::CommandExec(cmdtype, command, entries))
 }
 
@@ -195,9 +193,16 @@ fn foreach<W: Write>(w: &mut W, command: String, entries: Vec<String>) -> Result
         terminal::Clear(ClearType::FromCursorDown)
     )?;
     w.flush()?;
+
     terminal::disable_raw_mode()?;
-    dbg!(command, entries); //TODO
+    for entry in entries {
+        println!("\n{} {}", &command, style(&entry).with(Color::Yellow));
+        if let Err(status) = Command::new(&command).arg(entry).status() {
+            println!("{}", &status);
+        }
+    }
     terminal::enable_raw_mode()?;
+
     Ok(State::Keywait(Box::new(State::Selecting)))
 }
 
@@ -210,9 +215,20 @@ fn eachdir<W: Write>(w: &mut W, command: String, entries: Vec<String>) -> Result
         terminal::Clear(ClearType::FromCursorDown)
     )?;
     w.flush()?;
+
     terminal::disable_raw_mode()?;
-    dbg!(command, entries); //TODO
+    for entry in entries {
+        if Path::new(&entry).is_dir() {
+            println!("\ncd {} && {}", style(&entry).with(Color::Yellow), &command);
+            if let Err(status) = Command::new(&command).current_dir(&entry).status() {
+                println!("{}", &status);
+            }
+        } else {
+            println!("\nSkipping {}", style(&entry).with(Color::Yellow));
+        }
+    }
     terminal::enable_raw_mode()?;
+
     Ok(State::Keywait(Box::new(State::Selecting)))
 }
 
