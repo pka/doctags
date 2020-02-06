@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
@@ -8,6 +8,7 @@ use crossterm::{
 };
 use doctags::{search, Index};
 use rustyline::Editor;
+use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
@@ -28,23 +29,24 @@ enum State {
     Quit,
 }
 
-pub fn ui(index: &Index) -> Result<()> {
-    run(&mut io::stderr(), index)
+pub fn ui(index: &Index, outcmd: Option<String>) -> Result<()> {
+    run(&mut io::stderr(), index, outcmd)
 }
 
-fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
+fn run<W: Write>(w: &mut W, index: &Index, outcmd: Option<String>) -> Result<()> {
     execute!(w, terminal::EnterAlternateScreen)?;
 
     terminal::enable_raw_mode()?;
 
-    let mut selected_line = None;
     let mut state = State::Selecting;
     while state != State::Quit {
         state = match state {
             State::Selecting => select(w, index)?,
             State::CommandExec(cmdtype, command, entries) => cmdeach(w, cmdtype, command, entries)?,
             State::Selected(line) => {
-                selected_line = Some(line);
+                if let Some(ref fname) = outcmd {
+                    fs::write(fname, format!("cd {}", line))?;
+                }
                 State::Quit
             }
             State::Keywait(nextstate) => keywait(w, *nextstate)?,
@@ -58,10 +60,6 @@ fn run<W: Write>(w: &mut W, index: &Index) -> Result<()> {
         cursor::Show,
         terminal::LeaveAlternateScreen
     )?;
-
-    if let Some(line) = selected_line {
-        print!("{}", line);
-    }
 
     terminal::disable_raw_mode()?;
     Ok(())
@@ -134,9 +132,6 @@ fn select<W: Write>(w: &mut W, index: &Index) -> Result<State> {
                         selected += 1;
                     }
                 }
-                KeyCode::Enter => {
-                    return Ok(State::Selected(lines[selected].text.clone()));
-                }
                 KeyCode::Char(ch) if modifiers.is_empty() || modifiers == KeyModifiers::SHIFT => {
                     searchinput.push(ch);
                     selected = 0;
@@ -151,14 +146,19 @@ fn select<W: Write>(w: &mut W, index: &Index) -> Result<State> {
                 }
                 // Alt-p
                 KeyCode::Char('p') if modifiers == KeyModifiers::ALT => {
-                    let p = Path::new(&lines[selected].text);
-                    if p.is_dir() {
-                        let _ = open::that(&lines[selected].text);
-                    } else {
-                        if let Some(dir) = p.parent() {
-                            let _ = open::that(&dir);
+                    if let Ok(dir) = entry_dir(&lines[selected].text) {
+                        let _ = open::that(&dir);
+                    }
+                    // ignore errors
+                }
+                // Alt-c
+                KeyCode::Char('c') if modifiers == KeyModifiers::ALT => {
+                    if let Ok(dir) = entry_dir(&lines[selected].text) {
+                        if let Some(dirstr) = dir.to_str() {
+                            return Ok(State::Selected(dirstr.to_string()));
                         }
                     }
+                    // ignore errors
                 }
                 // Alt-f
                 KeyCode::Char('f') if modifiers == KeyModifiers::ALT => {
@@ -176,6 +176,16 @@ fn select<W: Write>(w: &mut W, index: &Index) -> Result<State> {
             }
         }
     }
+}
+
+fn entry_dir(fname: &str) -> Result<&Path> {
+    let p = Path::new(fname);
+    let dir = if p.is_dir() {
+        p
+    } else {
+        p.parent().context("invalid parent")?
+    };
+    Ok(dir)
 }
 
 fn enter_shell_command<W: Write>(
@@ -276,10 +286,11 @@ fn keywait<W: Write>(w: &mut W, next_state: State) -> Result<State> {
 fn print_menu<W: Write>(w: &mut W) -> Result<()> {
     let entries = [
         ("ESC", "quit"),
-        ("Enter", "select"),
+        // ("Enter", "select"),
         // ("Alt-v", "view"),
         ("Alt-o", "open"),
         ("Alt-p", "open folder"),
+        ("Alt-c", "cd"),
         ("Alt-f", "foreach"),
         ("Alt-d", "eachdir"),
         // ("Alt-s", "shortcut"),

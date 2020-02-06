@@ -65,6 +65,9 @@ enum Cli {
         /// Docset name
         #[structopt(short = "n", long, name = "name", default_value = "default")]
         docset: String,
+        #[structopt(long)]
+        /// Where to write the produced cmd (if any)
+        outcmd: Option<String>,
     },
     /// Get statistics
     Stats {},
@@ -132,11 +135,11 @@ fn command(cli_args: Cli) -> Result<()> {
             let index = index::open(&cfg.index)?;
             search::search(&index, text, limit)?;
         }
-        Cli::Ui { docset } => {
+        Cli::Ui { docset, outcmd } => {
             let config = config::load_config()?;
             let cfg = config.docset_config(&docset)?;
             let index = index::open(&cfg.index)?;
-            ui::ui(&index)?;
+            ui::ui(&index, outcmd)?;
         }
         Cli::Stats {} => {
             println!("Configuration {:?}", config::config_fn());
