@@ -367,6 +367,7 @@ dependencies = [
  "env_logger",
  "failure",
  "log 0.4.8",
+ "open",
  "rustyline",
  "structopt",
  "tantivy",
@@ -1008,6 +1009,15 @@ name = "once_cell"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1c601810575c99596d4afc46f78a678c80105117c379eb3650cf99b8a21ce5b"
+
+[[package]]
+name = "open"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3dfa632621d66502e1e9298c038d903090fc810a33cc1e6a02958fa0be65e3fb"
+dependencies = [
+ "winapi 0.3.8",
+]
 
 [[package]]
 name = "owned-read"

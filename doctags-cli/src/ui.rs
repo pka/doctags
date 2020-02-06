@@ -145,6 +145,21 @@ fn select<W: Write>(w: &mut W, index: &Index) -> Result<State> {
                     searchinput.pop();
                     selected = 0;
                 }
+                // Alt-o
+                KeyCode::Char('o') if modifiers == KeyModifiers::ALT => {
+                    let _ = open::that(&lines[selected].text);
+                }
+                // Alt-p
+                KeyCode::Char('p') if modifiers == KeyModifiers::ALT => {
+                    let p = Path::new(&lines[selected].text);
+                    if p.is_dir() {
+                        let _ = open::that(&lines[selected].text);
+                    } else {
+                        if let Some(dir) = p.parent() {
+                            let _ = open::that(&dir);
+                        }
+                    }
+                }
                 // Alt-f
                 KeyCode::Char('f') if modifiers == KeyModifiers::ALT => {
                     let entries: Vec<String> = lines.iter().map(|line| line.text.clone()).collect();
@@ -263,8 +278,8 @@ fn print_menu<W: Write>(w: &mut W) -> Result<()> {
         ("ESC", "quit"),
         ("Enter", "select"),
         // ("Alt-v", "view"),
-        // ("Alt-o", "open"),
-        // ("Alt-p", "open folder"),
+        ("Alt-o", "open"),
+        ("Alt-p", "open folder"),
         ("Alt-f", "foreach"),
         ("Alt-d", "eachdir"),
         // ("Alt-s", "shortcut"),

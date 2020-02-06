@@ -18,3 +18,4 @@ anyhow = "1.0"
 structopt = { version = "0.3", default-features = false }
 crossterm = "0.15"
 rustyline = { version = "6.0", default-features = false }
+open = "1.3"
