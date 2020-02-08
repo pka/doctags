@@ -13,7 +13,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 enum CommandType {
     Foreach,
     Eachdir,
@@ -21,13 +21,24 @@ enum CommandType {
 
 #[derive(PartialEq)]
 enum State {
-    Selecting,
+    Selecting(Option<Shortcut>),
     Selected(String),
     CommandExec(CommandType, String, Vec<String>),
-    // ShortcutSelect,
     Keywait(Box<State>),
     Quit,
 }
+
+#[derive(Clone, PartialEq)]
+struct Shortcut {
+    name: String,
+    search: String,
+    command: String,
+    command_type: CommandType,
+}
+
+const MENU_NORMAL: Color = Color::AnsiValue(252);
+const MENU_COMMAND: Color = Color::AnsiValue(220);
+const MENU_BACKGROUND: Color = Color::AnsiValue(235);
 
 pub fn ui(index: &Index, outcmd: Option<String>) -> Result<()> {
     run(&mut io::stderr(), index, outcmd)
@@ -38,10 +49,10 @@ fn run<W: Write>(w: &mut W, index: &Index, outcmd: Option<String>) -> Result<()>
 
     terminal::enable_raw_mode()?;
 
-    let mut state = State::Selecting;
+    let mut state = State::Selecting(None);
     while state != State::Quit {
         state = match state {
-            State::Selecting => select(w, index)?,
+            State::Selecting(shortcut) => select(w, index, shortcut)?,
             State::CommandExec(cmdtype, command, entries) => cmdeach(w, cmdtype, command, entries)?,
             State::Selected(line) => {
                 if let Some(ref fname) = outcmd {
@@ -65,7 +76,7 @@ fn run<W: Write>(w: &mut W, index: &Index, outcmd: Option<String>) -> Result<()>
     Ok(())
 }
 
-fn select<W: Write>(w: &mut W, index: &Index) -> Result<State> {
+fn select<W: Write>(w: &mut W, index: &Index, shortcut: Option<Shortcut>) -> Result<State> {
     queue!(
         w,
         SetBackgroundColor(Color::Black),
@@ -89,7 +100,11 @@ fn select<W: Write>(w: &mut W, index: &Index) -> Result<State> {
     let mut lines = Vec::new();
 
     // User input for search
-    let mut searchinput = String::new();
+    let mut searchinput = if let Some(ref sc) = shortcut {
+        sc.search.clone()
+    } else {
+        String::new()
+    };
     let mut selected = 0;
 
     let (_cols, rows) = terminal::size()?;
@@ -132,6 +147,16 @@ fn select<W: Write>(w: &mut W, index: &Index) -> Result<State> {
                         selected += 1;
                     }
                 }
+                KeyCode::Enter => {
+                    if let Some(ref sc) = shortcut {
+                        return Ok(enter_shell_command(
+                            w,
+                            sc.command_type.clone(),
+                            shortcut,
+                            entries(lines),
+                        )?);
+                    }
+                }
                 KeyCode::Char(ch) if modifiers.is_empty() || modifiers == KeyModifiers::SHIFT => {
                     searchinput.push(ch);
                     selected = 0;
@@ -162,13 +187,25 @@ fn select<W: Write>(w: &mut W, index: &Index) -> Result<State> {
                 }
                 // Alt-f
                 KeyCode::Char('f') if modifiers == KeyModifiers::ALT => {
-                    let entries: Vec<String> = lines.iter().map(|line| line.text.clone()).collect();
-                    return Ok(enter_shell_command(w, CommandType::Foreach, entries)?);
+                    return Ok(enter_shell_command(
+                        w,
+                        CommandType::Foreach,
+                        shortcut,
+                        entries(lines),
+                    )?);
                 }
                 // Alt-d
                 KeyCode::Char('d') if modifiers == KeyModifiers::ALT => {
-                    let entries: Vec<String> = lines.iter().map(|line| line.text.clone()).collect();
-                    return Ok(enter_shell_command(w, CommandType::Eachdir, entries)?);
+                    return Ok(enter_shell_command(
+                        w,
+                        CommandType::Eachdir,
+                        shortcut,
+                        entries(lines),
+                    )?);
+                }
+                // Alt-s
+                KeyCode::Char('s') if modifiers == KeyModifiers::ALT => {
+                    return Ok(State::Selecting(select_shortcut(w)?));
                 }
                 // Alt-e
                 KeyCode::Char('e') if modifiers == KeyModifiers::ALT => {
@@ -192,9 +229,14 @@ fn entry_dir(fname: &str) -> Result<&Path> {
     Ok(dir)
 }
 
+fn entries(lines: Vec<search::Match>) -> Vec<String> {
+    lines.iter().map(|line| line.text.clone()).collect()
+}
+
 fn enter_shell_command<W: Write>(
     w: &mut W,
     cmdtype: CommandType,
+    shortcut: Option<Shortcut>,
     entries: Vec<String>,
 ) -> Result<State> {
     queue!(
@@ -207,17 +249,22 @@ fn enter_shell_command<W: Write>(
 
     let mut rl = Editor::<()>::new();
     let _ok = rl.load_history("/tmp/history.txt");
-    let readline = rl.readline("Command: ");
+    let initial = if let Some(ref sc) = shortcut {
+        (sc.command.as_str(), "")
+    } else {
+        ("", "")
+    };
+    let readline = rl.readline_with_initial("Command: ", initial);
     let state = match readline {
         Ok(line) => {
             if line.is_empty() {
-                enter_shell_command(w, cmdtype, entries)
+                enter_shell_command(w, cmdtype, shortcut, entries)
             } else {
                 rl.add_history_entry(line.as_str());
                 Ok(State::CommandExec(cmdtype, line, entries))
             }
         }
-        Err(_) => Ok(State::Selecting),
+        Err(_) => Ok(State::Selecting(None)),
     };
     let _ok = rl.save_history("/tmp/history.txt");
     state
@@ -268,7 +315,7 @@ fn cmdeach<W: Write>(
     }
 
     // Reenabling raw_mode and switching back to AlternateScreen in keywait
-    Ok(State::Keywait(Box::new(State::Selecting)))
+    Ok(State::Keywait(Box::new(State::Selecting(None))))
 }
 
 fn keywait<W: Write>(w: &mut W, next_state: State) -> Result<State> {
@@ -287,6 +334,72 @@ fn keywait<W: Write>(w: &mut W, next_state: State) -> Result<State> {
     Ok(next)
 }
 
+fn select_num(min: u32, max: u32) -> Result<Option<u32>> {
+    loop {
+        if let Event::Key(KeyEvent { code, .. }) = event::read()? {
+            match code {
+                KeyCode::Char(c) => {
+                    if let Some(n) = c.to_digit(10) {
+                        if n >= min && n <= max {
+                            return Ok(Some(n));
+                        }
+                    }
+                }
+                KeyCode::Esc => {
+                    return Ok(None);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn select_shortcut<W: Write>(w: &mut W) -> Result<Option<Shortcut>> {
+    let shortcuts = [
+        Shortcut {
+            name: "git repos".to_string(),
+            search: ":gitrepo ".to_string(),
+            command: "git ".to_string(),
+            command_type: CommandType::Eachdir,
+        },
+        Shortcut {
+            name: "git project".to_string(),
+            search: ":gitrepo :project".to_string(),
+            command: "git ".to_string(),
+            command_type: CommandType::Eachdir,
+        },
+    ];
+
+    queue!(
+        w,
+        cursor::MoveTo(0, 1),
+        style::ResetColor,
+        SetBackgroundColor(Color::Black),
+        Print("Select shortcut"),
+    )?;
+
+    for (i, shortcut) in shortcuts.iter().enumerate() {
+        queue!(
+            w,
+            Print(" "),
+            SetForegroundColor(MENU_COMMAND),
+            Print(i + 1),
+            SetForegroundColor(MENU_NORMAL),
+            Print(": "),
+            Print(&shortcut.name)
+        )?;
+    }
+    queue!(w, terminal::Clear(ClearType::UntilNewLine),)?;
+    w.flush()?;
+
+    let shortcut = if let Some(num) = select_num(1, shortcuts.len() as u32)? {
+        Some(shortcuts[(num as usize) - 1].clone())
+    } else {
+        None
+    };
+    Ok(shortcut)
+}
+
 fn print_menu<W: Write>(w: &mut W) -> Result<()> {
     let entries = [
         ("ESC", "quit"),
@@ -297,19 +410,16 @@ fn print_menu<W: Write>(w: &mut W) -> Result<()> {
         ("Alt-c", "cd"),
         ("Alt-f", "foreach"),
         ("Alt-d", "eachdir"),
-        // ("Alt-s", "shortcut"),
+        ("Alt-s", "shortcut"),
         ("Alt-e", "edit config"),
     ];
-    let menu_normal = Color::AnsiValue(252);
-    let menu_command = Color::AnsiValue(220);
-    let menu_background = Color::AnsiValue(235);
-    queue!(w, cursor::MoveTo(0, 0), SetBackgroundColor(menu_background))?;
+    queue!(w, cursor::MoveTo(0, 0), SetBackgroundColor(MENU_BACKGROUND))?;
     for (i, (cmd, desc)) in entries.iter().enumerate() {
         queue!(
             w,
-            SetForegroundColor(menu_command),
+            SetForegroundColor(MENU_COMMAND),
             Print(cmd),
-            SetForegroundColor(menu_normal),
+            SetForegroundColor(MENU_NORMAL),
             Print(": "),
             Print(desc),
         )?;
