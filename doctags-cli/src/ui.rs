@@ -6,7 +6,7 @@ use crossterm::{
     style::{self, style, Color, Print, SetBackgroundColor, SetForegroundColor},
     terminal::{self, ClearType},
 };
-use doctags::{search, Index};
+use doctags::{config, search, Index};
 use rustyline::Editor;
 use std::fs;
 use std::io::{self, Write};
@@ -170,6 +170,10 @@ fn select<W: Write>(w: &mut W, index: &Index) -> Result<State> {
                     let entries: Vec<String> = lines.iter().map(|line| line.text.clone()).collect();
                     return Ok(enter_shell_command(w, CommandType::Eachdir, entries)?);
                 }
+                // Alt-e
+                KeyCode::Char('e') if modifiers == KeyModifiers::ALT => {
+                    let _ = open::that(config::config_fn()?);
+                }
                 _ => {
                     // println!("{}", format!("OTHER InputEvent: {:?}\n\n", code));
                 }
@@ -294,7 +298,7 @@ fn print_menu<W: Write>(w: &mut W) -> Result<()> {
         ("Alt-f", "foreach"),
         ("Alt-d", "eachdir"),
         // ("Alt-s", "shortcut"),
-        // ("Alt-c", "edit config"),
+        ("Alt-e", "edit config"),
     ];
     let menu_normal = Color::AnsiValue(252);
     let menu_command = Color::AnsiValue(220);
