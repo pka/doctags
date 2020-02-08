@@ -248,7 +248,7 @@ fn enter_shell_command<W: Write>(
     w.flush()?;
 
     let mut rl = Editor::<()>::new();
-    let _ok = rl.load_history("/tmp/history.txt");
+    let _ok = rl.load_history(&config::command_history_fn()?);
     let initial = if let Some(ref sc) = shortcut {
         (sc.command.as_str(), "")
     } else {
@@ -266,7 +266,7 @@ fn enter_shell_command<W: Write>(
         }
         Err(_) => Ok(State::Selecting(None)),
     };
-    let _ok = rl.save_history("/tmp/history.txt");
+    let _ok = rl.save_history(&config::command_history_fn()?);
     state
 }
 

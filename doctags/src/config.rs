@@ -32,6 +32,15 @@ pub fn config_fn() -> Result<PathBuf> {
         .context("Could not determine UserConfig directory")
 }
 
+pub fn command_history_fn() -> Result<PathBuf> {
+    app_root(AppDataType::UserCache, &APP_INFO)
+        .map(|mut dir| {
+            dir.push("history.txt");
+            dir
+        })
+        .context("Could not determine UserCache directory")
+}
+
 pub fn load_config() -> Result<Config> {
     let fname = config_fn()?;
     if !fname.exists() {
