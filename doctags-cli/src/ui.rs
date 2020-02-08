@@ -334,7 +334,7 @@ fn keywait<W: Write>(w: &mut W, next_state: State) -> Result<State> {
     Ok(next)
 }
 
-fn select_num(min: u32, max: u32) -> Result<Option<u32>> {
+fn read_number(min: u32, max: u32) -> Result<Option<u32>> {
     loop {
         if let Event::Key(KeyEvent { code, .. }) = event::read()? {
             match code {
@@ -364,7 +364,7 @@ fn select_shortcut<W: Write>(w: &mut W) -> Result<Option<Shortcut>> {
         },
         Shortcut {
             name: "git project".to_string(),
-            search: ":gitrepo :project".to_string(),
+            search: ":gitrepo :project:".to_string(),
             command: "git ".to_string(),
             command_type: CommandType::Eachdir,
         },
@@ -392,7 +392,7 @@ fn select_shortcut<W: Write>(w: &mut W) -> Result<Option<Shortcut>> {
     queue!(w, terminal::Clear(ClearType::UntilNewLine),)?;
     w.flush()?;
 
-    let shortcut = if let Some(num) = select_num(1, shortcuts.len() as u32)? {
+    let shortcut = if let Some(num) = read_number(1, shortcuts.len() as u32)? {
         Some(shortcuts[(num as usize) - 1].clone())
     } else {
         None
