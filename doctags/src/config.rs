@@ -14,6 +14,8 @@ const APP_INFO: AppInfo = AppInfo {
 pub struct Config {
     #[serde(rename = "docset", default)]
     pub docsets: Vec<DocsetConfig>,
+    #[serde(rename = "shortcut", default)]
+    pub shortcuts: Vec<ShortcutConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -21,6 +23,21 @@ pub struct DocsetConfig {
     pub name: String,
     pub index: String,
     pub basedirs: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct ShortcutConfig {
+    pub name: String,
+    pub search: String,
+    pub command: String,
+    pub command_type: CommandType,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum CommandType {
+    Foreach,
+    Eachdir,
 }
 
 pub fn config_fn() -> Result<PathBuf> {

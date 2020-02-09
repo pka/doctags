@@ -6,6 +6,7 @@ use crossterm::{
     style::{self, style, Color, Print, SetBackgroundColor, SetForegroundColor},
     terminal::{self, ClearType},
 };
+use doctags::config::{CommandType, ShortcutConfig};
 use doctags::{config, search, Index};
 use rustyline::Editor;
 use std::fs;
@@ -13,27 +14,13 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 
-#[derive(Clone, PartialEq)]
-enum CommandType {
-    Foreach,
-    Eachdir,
-}
-
 #[derive(PartialEq)]
 enum State {
-    Selecting(Option<Shortcut>),
+    Selecting(Option<ShortcutConfig>),
     Selected(String),
     CommandExec(CommandType, String, Vec<String>),
     Keywait(Box<State>),
     Quit,
-}
-
-#[derive(Clone, PartialEq)]
-struct Shortcut {
-    name: String,
-    search: String,
-    command: String,
-    command_type: CommandType,
 }
 
 const MENU_NORMAL: Color = Color::AnsiValue(252);
@@ -76,7 +63,7 @@ fn run<W: Write>(w: &mut W, index: &Index, outcmd: Option<String>) -> Result<()>
     Ok(())
 }
 
-fn select<W: Write>(w: &mut W, index: &Index, shortcut: Option<Shortcut>) -> Result<State> {
+fn select<W: Write>(w: &mut W, index: &Index, shortcut: Option<ShortcutConfig>) -> Result<State> {
     queue!(
         w,
         SetBackgroundColor(Color::Black),
@@ -236,7 +223,7 @@ fn entries(lines: Vec<search::Match>) -> Vec<String> {
 fn enter_shell_command<W: Write>(
     w: &mut W,
     cmdtype: CommandType,
-    shortcut: Option<Shortcut>,
+    shortcut: Option<ShortcutConfig>,
     entries: Vec<String>,
 ) -> Result<State> {
     queue!(
@@ -354,21 +341,8 @@ fn read_number(min: u32, max: u32) -> Result<Option<u32>> {
     }
 }
 
-fn select_shortcut<W: Write>(w: &mut W) -> Result<Option<Shortcut>> {
-    let shortcuts = [
-        Shortcut {
-            name: "git repos".to_string(),
-            search: ":gitrepo ".to_string(),
-            command: "git ".to_string(),
-            command_type: CommandType::Eachdir,
-        },
-        Shortcut {
-            name: "git project".to_string(),
-            search: ":gitrepo :project:".to_string(),
-            command: "git ".to_string(),
-            command_type: CommandType::Eachdir,
-        },
-    ];
+fn select_shortcut<W: Write>(w: &mut W) -> Result<Option<ShortcutConfig>> {
+    let shortcuts = config::load_config()?.shortcuts;
 
     queue!(
         w,
