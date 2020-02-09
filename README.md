@@ -3,9 +3,15 @@ doctags
 
 doctags is a simple document management system based on tags.
 
+doctags is written in Rust and uses the full-text search engine [Tantivy](https://github.com/tantivy-search/tantivy).
+
+Tags
+----
+
 Tags are stored in human readable `.doctags.toml` files, supporting network file systems and sharing tags.
 
-doctags is written in Rust and uses the full-text search engine [Tantivy](https://github.com/tantivy-search/tantivy).
+Hierarchical tags are preferably separated with a colon like in `lang:de`. In search expressions,
+tags are identified by a colon prefix (e.g. `:lang:de`).
 
 Installation
 ------------
@@ -50,6 +56,10 @@ Search tagged paths:
 
     doctags search ':project:t-rex .toml'
     doctags search -l 0 ':gitrepo *'
+
+Use terminal UI:
+
+    doctags ui
 
 Mount virtual file system:
 
