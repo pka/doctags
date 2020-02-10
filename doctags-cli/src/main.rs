@@ -3,25 +3,13 @@ extern crate log;
 
 mod ui;
 
-use ::doctags::{config, doctags, index, search, walk};
+use ::doctags::{config, doctags, index, search};
 use anyhow::Result;
 use std::io::Write;
 use structopt::StructOpt;
 
-fn out_json(_id: u64, _parent_id: u64, path: &str, tags: &Vec<&String>) {
-    println!(r#"{{"path":"{}","tags":{:?}}}"#, path, tags);
-}
-
 #[derive(Debug, StructOpt)]
 enum Cli {
-    Scan {
-        /// Git repo search
-        #[structopt(long)]
-        git: bool,
-
-        /// Base directory for searching files to index
-        basedir: String,
-    },
     /// Create search index
     Index {
         /// Docset name
@@ -97,13 +85,6 @@ fn setup_logger() {
 
 fn command(cli_args: Cli) -> Result<()> {
     match cli_args {
-        Cli::Scan { git, basedir } => {
-            if git {
-                // walk::find_repos(&basedir, out_json);
-            } else {
-                walk::find(&vec![basedir], out_json)?;
-            }
-        }
         Cli::Index {
             docset,
             index,
