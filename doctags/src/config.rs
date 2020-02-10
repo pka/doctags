@@ -132,10 +132,17 @@ fn read_config() -> Result<()> {
         name = "code"
         index = "/tmp/idxcode"
         basedirs = ["/home/pi/code"]
+
+        [[shortcut]]
+        name = "git repos"
+        search = ":gitrepo "
+        command = "git "
+        command_type = "eachdir"
     "#;
     let config: Config = toml::from_str(cfg)?;
     assert_eq!(config.docsets[0].name, "default");
 
+    // toml::to_string fails whitout shortcut entry!?
     let toml = toml::to_string(&config)?;
     assert!(toml.contains(r#"name = "default""#));
     Ok(())
