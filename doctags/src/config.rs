@@ -12,10 +12,10 @@ const APP_INFO: AppInfo = AppInfo {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
-    #[serde(rename = "docset", default)]
-    pub docsets: Vec<DocsetConfig>,
     #[serde(rename = "shortcut", default)]
     pub shortcuts: Vec<ShortcutConfig>,
+    #[serde(rename = "docset", default)]
+    pub docsets: Vec<DocsetConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -142,8 +142,18 @@ fn read_config() -> Result<()> {
     let config: Config = toml::from_str(cfg)?;
     assert_eq!(config.docsets[0].name, "default");
 
-    // toml::to_string fails whitout shortcut entry!?
     let toml = toml::to_string(&config)?;
     assert!(toml.contains(r#"name = "default""#));
+
+    // Without shortcut
+    let cfg = r#"
+        [[docset]]
+        name = "default"
+        index = "/tmp/idxdefault"
+        basedirs = ["/home/pi/Documents"]
+    "#;
+    let config: Config = toml::from_str(cfg)?;
+    let _toml = toml::to_string(&config)?;
+
     Ok(())
 }
