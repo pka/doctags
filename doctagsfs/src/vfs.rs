@@ -78,6 +78,10 @@ impl DoctagsFS {
             .context("Field 'tag' not found")?;
         let mut facet_collector = FacetCollector::for_field(tags_field);
         facet_collector.add_facet("/");
+        if let Err(e) = searcher.search(&AllQuery, &facet_collector) {
+            error!("Error while collecting tags: {:?}", e);
+            return Ok(());
+        }
         let facet_counts = searcher.search(&AllQuery, &facet_collector).compat()?;
         let mut facets = HashMap::new();
         for (facet, _count) in facet_counts.get("/") {

@@ -119,6 +119,7 @@ impl IndexWriter {
 mod tests {
     use super::*;
     use tantivy::collector::Count;
+    use tantivy::collector::FacetCollector;
     use tantivy::doc;
     use tantivy::query::AllQuery;
 
@@ -128,12 +129,22 @@ mod tests {
 
         idx.writer
             .add_document(doc!(idx.id => 3u64, idx.parent_id => 2u64, idx.path => "/root"));
-        let _ = idx.commit();
+        idx.commit()?;
 
         let reader = index.reader().compat()?;
         let searcher = reader.searcher();
         let count = searcher.search(&AllQuery, &Count).compat()?;
         assert_eq!(count, 1);
+
+        // Facet search
+        let mut facet_collector = FacetCollector::for_field(idx.tags);
+        facet_collector.add_facet("/");
+        // TODO: Tantify bug -> Schema error: 'Field "tags" is not a facet field.'
+        assert!(searcher.search(&AllQuery, &facet_collector).is_err());
+        // let facet_counts = searcher.search(&AllQuery, &facet_collector).compat()?;
+        // let (_, count) = facet_counts.get("/").next().unwrap();
+        assert_eq!(count, 1);
+
         Ok(())
     }
 }

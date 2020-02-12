@@ -233,9 +233,10 @@ pub fn stats(index: &Index) -> Result<()> {
     let mut facet_collector = FacetCollector::for_field(tags);
     facet_collector.add_facet("/");
 
-    let facet_counts = searcher.search(&AllQuery, &facet_collector).compat()?;
-    for (facet, count) in facet_counts.get("/") {
-        println!("{}: {}", &facet, count);
+    if let Ok(facet_counts) = searcher.search(&AllQuery, &facet_collector) {
+        for (facet, count) in facet_counts.get("/") {
+            println!("{}: {}", &facet, count);
+        }
     }
 
     Ok(())
