@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 doctags = { path = "../doctags" }
-tantivy = "0.11"
+tantivy = "0.12"
 failure = "0.1" # Required for converting tantivy errors
 fuse = "0.3"
 libc = "0.2"
