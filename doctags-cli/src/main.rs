@@ -56,6 +56,9 @@ enum Cli {
         #[structopt(long)]
         /// Where to write the produced cmd (if any)
         outcmd: Option<String>,
+        /// Print directory selected with Alt-c
+        #[structopt(short, long, parse(try_from_str), default_value = "false")]
+        printcd: bool,
     },
     /// Get statistics
     Stats {},
@@ -116,11 +119,11 @@ fn command(cli_args: Cli) -> Result<()> {
             let index = index::open(&cfg.index)?;
             search::search(&index, text, limit)?;
         }
-        Cli::Ui { docset, outcmd } => {
+        Cli::Ui { docset, outcmd, printcd } => {
             let config = config::load_config()?;
             let cfg = config.docset_config(&docset)?;
             let index = index::open(&cfg.index)?;
-            ui::ui(&index, outcmd)?;
+            ui::ui(&index, outcmd, printcd)?;
         }
         Cli::Stats {} => {
             println!("Configuration {:?}", config::config_fn());

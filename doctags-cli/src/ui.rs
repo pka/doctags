@@ -27,15 +27,16 @@ const MENU_NORMAL: Color = Color::AnsiValue(252);
 const MENU_COMMAND: Color = Color::AnsiValue(220);
 const MENU_BACKGROUND: Color = Color::AnsiValue(235);
 
-pub fn ui(index: &Index, outcmd: Option<String>) -> Result<()> {
-    run(&mut io::stderr(), index, outcmd)
+pub fn ui(index: &Index, outcmd: Option<String>, printcd: bool) -> Result<()> {
+    run(&mut io::stderr(), index, outcmd, printcd)
 }
 
-fn run<W: Write>(w: &mut W, index: &Index, outcmd: Option<String>) -> Result<()> {
+fn run<W: Write>(w: &mut W, index: &Index, outcmd: Option<String>, printcd: bool) -> Result<()> {
     execute!(w, terminal::EnterAlternateScreen)?;
 
     terminal::enable_raw_mode()?;
 
+    let mut cd = "".to_string();
     let mut state = State::Selecting(None);
     while state != State::Quit {
         state = match state {
@@ -43,7 +44,11 @@ fn run<W: Write>(w: &mut W, index: &Index, outcmd: Option<String>) -> Result<()>
             State::CommandExec(cmdtype, command, entries) => cmdeach(w, cmdtype, command, entries)?,
             State::Selected(line) => {
                 if let Some(ref fname) = outcmd {
+                    // Write a shell command which can be executed by a shell function
                     fs::write(fname, format!("cd {}", line))?;
+                }
+                if printcd {
+                    cd = line.clone();
                 }
                 State::Quit
             }
@@ -60,6 +65,10 @@ fn run<W: Write>(w: &mut W, index: &Index, outcmd: Option<String>) -> Result<()>
     )?;
 
     terminal::disable_raw_mode()?;
+
+    // Print the target directory to use it as a shell command argument
+    print!("{}", cd);
+
     Ok(())
 }
 

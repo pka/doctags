@@ -74,3 +74,51 @@ Mount from fstab:
     sudo ln -s $HOME/.cargo/bin/doctagsfs /sbin/mount.doctags
     echo "default   /mnt/doctags    doctags   noauto,ro,user,exec    0 0" | sudo tee -a /etc/fstab
     mount /mnt/doctags
+
+
+Using Alt-c from a shell
+------------------------
+
+Changing the directory within an application doesn't change the state of the calling shell.
+
+For [Nushell](https://www.nushell.sh/) you can define an alias:
+
+    alias dt [] { doctags ui --printcd true | cd $it }
+
+For Bash you can use a function:
+
+```
+BIN=$HOME/.cargo/bin/doctags
+function dt {
+    f=$(mktemp)
+    (
+    set +e
+    $BIN ui --outcmd "$f" "$@"
+    code=$?
+    if [ "$code" != 0 ]; then
+        rm -f "$f"
+        exit "$code"
+    fi
+    )
+    code=$?
+    if [ "$code" != 0 ]; then
+    return "$code"
+    fi
+    d=$(<"$f")
+    rm -f "$f"
+    eval "$d"
+}
+```
+
+
+Troubleshooting
+---------------
+
+If `doctacs` panics with a message like "Unknown error while starting watching directory ...", then tantivy
+has reached the kernel inotify watch limit. Check with:
+
+    sudo sysctl fs.inotify.max_user_watches
+
+and increase it temporarely with:
+
+    sudo sysctl fs.inotify.max_user_watches=16384
